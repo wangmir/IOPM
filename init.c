@@ -1,6 +1,7 @@
 #include "iopm.h"
 #include "main.h"
 #include "init.h"
+#include "list.h"
 
 
 void init() {
@@ -14,7 +15,6 @@ void init() {
 	init_partition_pool();
 	init_block_pool();
 
-	free_partition = NUMBER_PARTITION;
 	free_block = FREE_BLOCK;
 	ALLOC_PARTITION = 0;
 
@@ -24,13 +24,6 @@ void init() {
 	victim_partition = (int *)malloc(sizeof(int)*(PARTITION_PER_CLUSTER + 2));
 
 	remove_block_in_partition = (int *)malloc(sizeof(int) * BLOCK_PER_PARTITION);
-	victim_cluster_pool = (_cluster **)malloc(sizeof(_cluster)*PAGE_PER_CLUSTER);
-	victim_cluster_pool_num = (int *)malloc(sizeof(int) * PAGE_PER_CLUSTER);
-	int i;
-	for (i = 0; i < PAGE_PER_CLUSTER; i++) {
-		victim_cluster_pool[i] = NULL;
-		victim_cluster_pool_num[i] = 0;
-	}
 }
 
 void init_COUNT() {
@@ -51,158 +44,93 @@ void init_COUNT() {
 }
 
 void init_PVB() {
+
 	int i, j;
 
 	PVB = (_PVB *)malloc(sizeof(_PVB) * NUMBER_PARTITION);
 
+	memset(PVB, 0x00, sizeof(_PVB) * NUMBER_PARTITION);
+
+	INIT_LIST_HEAD(&free_partition_pool);
+
 	for (i = 0; i<NUMBER_PARTITION; i++) {
 
 		PVB[i].bitmap = (int *)malloc(sizeof(int) * PAGE_PER_PARTITION_32);
+		memset(PVB[i].bitmap, 0x00, sizeof(int) * PAGE_PER_PARTITION_32);
 
-		for (j = 0; j<PAGE_PER_PARTITION_32; j++) {
-			PVB[i].bitmap[j] = 0;
-		}
 		PVB[i].startLPN = -1;
 		PVB[i].startPPN = -1;
 		PVB[i].endPPN = -1;
-		PVB[i].valid = 0;
+
 		PVB[i].block = (int *)malloc(sizeof(int)*(BLOCK_PER_PARTITION + 1));
-		PVB[i].blocknum = 0;
-		PVB[i].active_flag = 0;
-		PVB[i].allocate_free = NULL;
 
-		PVB[i].cluster = (_partition *)malloc(sizeof(_partition));
-		PVB[i].cluster->partition_num = i;
-		PVB[i].cluster->prev = NULL;
-		PVB[i].cluster->next = NULL;
+		INIT_LIST_HEAD(&PVB[i].p_list);
 
-		PVB[i].victim_partition_list = (_partition *)malloc(sizeof(_partition));
-		PVB[i].victim_partition_list->partition_num = i;
-		PVB[i].victim_partition_list->prev = NULL;
-		PVB[i].victim_partition_list->next = NULL;
+		PVB[i].partition_num = i;
 
-		PVB[i].victim_partition_flag = 0;
-
-		// start/end를 제외한 가운데 block
-		for (j = 0; j < BLOCK_PER_PARTITION + 1; j++) {
+		// mid block (if the partition can allocate more than 2 blocks
+		for (j = 0; j < BLOCK_PER_PARTITION + 1; j++)
 			PVB[i].block[j] = -1;
-		}
 
+		list_add(&PVB[i].p_list, &free_partition_pool);
 	}
+
+	free_partition = NUMBER_PARTITION;
 }
 
 void init_BIT() {
-	int i;
+
+	INIT_LIST_HEAD(&allocated_block_pool);
+	INIT_LIST_HEAD(&free_block_pool);
+	INIT_LIST_HEAD(&full_invalid_block_pool);
 
 	BIT = (_BIT *)malloc(sizeof(_BIT) * FREE_BLOCK);
 
-	for (i = 0; i<FREE_BLOCK; i++) {
-
+	for (int i = 0; i < FREE_BLOCK; i++) {
 		BIT[i].invalid = 0;
 		BIT[i].num_partition = 0;
 		BIT[i].partition = (int*)malloc(sizeof(int)*PAGE_PER_BLOCK);
-		BIT[i].alloc_free = NULL;
-	}
-}
+		INIT_LIST_HEAD(&BIT[i].b_list);
 
-void init_partition_pool() {
-	int i;
-
-	allocated_partition_pool = NULL;
-	for (i = 0; i < NUMBER_PARTITION; i++) {
-		_partition * p = (_partition *)malloc(sizeof(_partition));
-		p->partition_num = i;
-		p->free_flag = 1;
-		if (free_partition_pool == NULL) {
-			p->next = p;
-			p->prev = p;
-			free_partition_pool = p;
-		}
-		else {
-			//_partition *temp = free_partition_pool;
-			_partition *prev = free_partition_pool->prev;
-			_partition *next = free_partition_pool->next;
-			p->next = free_partition_pool;
-			free_partition_pool->prev = p;
-			p->prev = prev;
-			prev->next = p;
-		}
-		PVB[i].allocate_free = p;
-	}
-}
-
-void init_block_pool() {
-
-	int i;
-	full_invalid_block_num = 0;
-	full_invalid_block_pool = NULL;
-
-	allocated_block_pool = NULL;
-	for (i = 0; i < FREE_BLOCK;  i++) {
-		_block * b = (_block *)malloc(sizeof(_block));
-		b->block_num = i;
-		b->free_flag = 1;
-		if (free_block_pool == NULL) {
-			b->next = b;
-			b->prev = b;
-			free_block_pool = b;
-		}
-		else {
-			_block *prev = free_block_pool->prev;
-			_block *next = free_block_pool->next;
-			b->next = free_block_pool;
-			free_block_pool->prev = b;
-			b->prev = prev;
-			prev->next = b;
-		}
-		BIT[i].alloc_free = b;
+		list_add(&BIT[i].b_list, &free_block_pool);
 	}
 }
 
 void init_SIT() {
-	int i;
+
+	INIT_LIST_HEAD(&active_stream_pool);
+	INIT_LIST_HEAD(&free_stream_pool);
 
 	SIT = (_SIT *)malloc(sizeof(_SIT) * NUMBER_STREAM);
 
-	for (i = 0; i<NUMBER_STREAM; i++) {
-		SIT[i].recentPartition = -1;
+	for (int i = 0; i<NUMBER_STREAM; i++) {
+		SIT[i].activePartition = -1;
 		SIT[i].recentLPN = -1;
 		SIT[i].recentPPN = -1;
+
+		SIT[i].stream_num = i;
+		INIT_LIST_HEAD(&SIT[i].SIT_list);
+		list_add(&SIT[i].SIT_list, &free_stream_pool);
 	}
 }
 
 void init_CLUSTER() {
-	int i;
 
 	CLUSTER = (_CLUSTER *)malloc(sizeof(_CLUSTER) * NUMBER_CLUSTER);
 
-	for (i = 0; i<NUMBER_CLUSTER; i++) {
-		CLUSTER[i].valid = 0;
-		CLUSTER[i].num_partition = 0;
-		CLUSTER[i].victim_valid = 0;
-		CLUSTER[i].victim_partition_num = 0;
-		CLUSTER[i].cluster = (_cluster *)malloc(sizeof(_cluster));
-		CLUSTER[i].cluster->cluster_num = i;
-		CLUSTER[i].cluster->prev = NULL;
-		CLUSTER[i].cluster->next = NULL;
-		CLUSTER[i].partition_list = NULL;
-		CLUSTER[i].victim_partition_list = NULL;
+	memset(CLUSTER, 0x00, sizeof(_CLUSTER) * NUMBER_CLUSTER);
+
+	for (int i = 0; i<NUMBER_CLUSTER; i++) {
+		INIT_LIST_HEAD(&CLUSTER[i].p_list);
+		INIT_LIST_HEAD(&CLUSTER[i].c_list);
+
+		CLUSTER[i].cluster_num = i;
 	}
-}
-
-
-void init_victim_cluster() {
-
-
 }
 
 void init_Partition(int partition) {
 
-	int j;
-
-	for (j = 0; j<PAGE_PER_PARTITION_32; j++) {
-		PVB[partition].bitmap[j] = 0;
-	}
+	memset(PVB[partition].bitmap, 0x00, sizeof(int) * PAGE_PER_PARTITION_32);
 
 	PVB[partition].startLPN = -1;
 	PVB[partition].startPPN = -1;
@@ -210,14 +138,13 @@ void init_Partition(int partition) {
 	PVB[partition].valid = 0;
 	PVB[partition].blocknum = 0;
 	PVB[partition].active_flag = 0;
-	PVB[partition].allocate_free->free_flag = 1;
+	PVB[partition].free_flag = 1;
 	PVB[partition].victim_partition_flag = 0;
-	PVB[partition].cluster->next = NULL;
-	PVB[partition].cluster->prev = NULL;
-	PVB[partition].victim_partition_list->next = NULL;
-	PVB[partition].victim_partition_list->prev = NULL;
+	
+	LIST_INIT_HEAD(&PVB[partition].p_list);
+
 	// start/end를 제외한 가운데 block
-	for (j = 0; j < BLOCK_PER_PARTITION + 1; j++) {
-		PVB[partition].block[j] = -1;
+	for (int i = 0; i < BLOCK_PER_PARTITION + 1; i++) {
+		PVB[partition].block[i] = -1;
 	}
 }

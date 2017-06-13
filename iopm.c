@@ -52,15 +52,12 @@ void IOPM_write(int LPN, int IO_type) {
 	WRITE_count(IO_type);
 	/*********************/
 
-	assert(free_partition_pool->free_flag == 1);
-
-
 	// variables
 	int overwrite_partition = -1;
 	int overwrite_PPN = -1;
 	int partition = -1;
 	
-	/* Check Overwrite */
+	// Check Overwrite
 	if (IO_type == IO_WRITE) {
 		overwrite_partition = LPN2Partition(LPN, IO_type);
 		if (overwrite_partition != -1) {
@@ -69,14 +66,14 @@ void IOPM_write(int LPN, int IO_type) {
 		}
 	}
 
-	/* Select the Stream*/
+	// Select the Stream
 	int stream = select_stream(LPN, IO_type);
 
 	int new_partition_flag = 0;
 	int new_block_flag = 0;
 
 	// need to allocate new partition
-	if (LPN <= SIT[stream].recentLPN || SIT[stream].recentLPN == -1 || (LPN - PVB[SIT[stream].recentPartition].startLPN) >= PAGE_PER_PARTITION) {
+	if (LPN <= SIT[stream].recentLPN || SIT[stream].recentLPN == -1 || (LPN - PVB[SIT[stream].activePartition].startLPN) >= PAGE_PER_PARTITION) {
 		new_partition_flag = 1;	
 	}
 	
@@ -87,49 +84,49 @@ void IOPM_write(int LPN, int IO_type) {
 
 	if (new_block_flag == 1 && new_partition_flag == 1) {
 		// close stream
-		if (SIT[stream].recentPartition != -1) {
+		if (SIT[stream].activePartition != -1) {
 			close_partition(stream, IO_type);
-			SIT[stream].recentPartition = -1;
+			SIT[stream].activePartition = -1;
 			SIT[stream].recentLPN = -1;
 		}
 		// allocate new partition
 		partition = allocate_partition(IO_type);
-		free_partition--;
 
 		int block = allocate_block();
+
 		PVB[partition].block[PVB[partition].blocknum] = block;
 		PVB[partition].startPPN = block * PAGE_PER_BLOCK;
 		PVB[partition].blocknum++;
+
+		// newly allocated PPN
 		SIT[stream].recentPPN = block * PAGE_PER_BLOCK;
 
+		// FIXME: need to fix start LPN to cluster aligned address in order to allocate partition in aligned
 		PVB[partition].startLPN = LPN;
 		PVB[partition].startPPN = SIT[stream].recentPPN;
 
 		int cluster = allocate_partition_to_cluster(LPN, partition);
 		CLUSTER[cluster].num_partition++;
 
-		SIT[stream].recentPartition = partition;
-		//partition_valid_check(partition);
+		SIT[stream].activePartition = partition;
+		// partition_valid_check(partition);
 		BIT[block].partition[BIT[block].num_partition] = partition;
 		BIT[block].num_partition++;
 
 	}
 	else if (new_block_flag == 0 && new_partition_flag == 1) {
-		assert(free_partition_pool->free_flag == 1);
 
 		// close stream
-		if (SIT[stream].recentPartition != -1) {
+		if (SIT[stream].activePartition != -1) {
 			close_partition(stream, IO_type);
-			SIT[stream].recentPartition = -1;
+			SIT[stream].activePartition = -1;
 			SIT[stream].recentLPN = -1;
 		}
 		SIT[stream].recentPPN = SIT[stream].recentPPN + 1;
 
-		assert(free_partition_pool->free_flag == 1);
 
 		// allocate new partition
 		partition = allocate_partition(IO_type);
-		free_partition--;
 
 		int block = SIT[stream].recentPPN / PAGE_PER_BLOCK;
 		PVB[partition].startLPN = LPN;
@@ -137,13 +134,11 @@ void IOPM_write(int LPN, int IO_type) {
 		PVB[partition].block[PVB[partition].blocknum] = SIT[stream].recentPPN/PAGE_PER_BLOCK;
 		PVB[partition].blocknum++;
 
-		assert(free_partition_pool->free_flag == 1);
-
 		int cluster = allocate_partition_to_cluster(LPN, partition);
 		CLUSTER[cluster].num_partition++;
 		//victim_partition_flag_check(cluster);
 
-		SIT[stream].recentPartition = partition;
+		SIT[stream].activePartition = partition;
 		//partition_valid_check(partition);
 
 		BIT[block].partition[BIT[block].num_partition] = partition;
@@ -152,7 +147,7 @@ void IOPM_write(int LPN, int IO_type) {
 
 	}
 	else if (new_block_flag == 1 && new_partition_flag == 0){
-		partition = SIT[stream].recentPartition;
+		partition = SIT[stream].activePartition;
 		
 		int block = allocate_block();
 		PVB[partition].block[PVB[partition].blocknum] = block;
@@ -166,7 +161,7 @@ void IOPM_write(int LPN, int IO_type) {
 	}
 	else {
 
-		partition = SIT[stream].recentPartition;
+		partition = SIT[stream].activePartition;
 		SIT[stream].recentPPN++;
 		//partition_valid_check(partition);
 
@@ -193,8 +188,6 @@ void IOPM_write(int LPN, int IO_type) {
 	//if(IO_type == IO_WRITE)
 	//	victim_partition_flag_check(PVB[partition].startLPN / PAGE_PER_CLUSTER);
 
-	assert(free_partition_pool->free_flag == 1);
-
 	// invalid old data
 	if (overwrite_PPN != -1 && IO_type == IO_WRITE) {
 		COUNT.overwrite++;
@@ -214,21 +207,17 @@ void IOPM_write(int LPN, int IO_type) {
 		// invalid cluster
 		int cluster = PVB[overwrite_partition].startLPN / PAGE_PER_CLUSTER;
 		CLUSTER[cluster].valid--;	
-		assert(free_partition_pool->free_flag == 1);
+
 	//	victim_partition_flag_check(cluster);
 
 		//cluster_vicitm_valid(cluster);
 		if (PVB[overwrite_partition].valid == 0) {
 			invalid_page_cluster(LPN, overwrite_partition);
 			free_full_invalid_partition(overwrite_partition);
-			assert(free_partition_pool->free_flag == 1);
-
 		}
 		else {
 			// remove the cluster - VICTIM VALID인 경우 CHECK
 			invalid_page_cluster(LPN, overwrite_partition);
-			assert(free_partition_pool->free_flag == 1);
-
 		}
 
 
@@ -238,66 +227,6 @@ void IOPM_write(int LPN, int IO_type) {
 	check_partition_gc(IO_type);
 	//SIT_debug();
 }
-
-#if 0
-void BlockGC() {
-
-	/*******COUNTING******/	
-		BLOCKGC_count();
-	/*********************/
-	
-	/* Select victim block */
-	int victim_block = select_victim_block();
-	int i, j;
-
-	// get the startPPN in victim block's partition
-	_partition *temp = BIT[victim_block].partition;
-	//int *partition_startPPN = (int *)malloc(sizeof(int)*BIT[victim_block].num_partition);
-	int *partition_startOff = (int *)malloc(sizeof(int)*BIT[victim_block].num_partition);
-	int *partition_endOff = (int *)malloc(sizeof(int)*BIT[victim_block].num_partition);
-
-	int *copy_pages = (int *)malloc(sizeof(int *)* PAGE_PER_BLOCK);
-	int *index = (int *)malloc(sizeof(int)*BIT[victim_block].num_partition);
-	for (i = 0; i < BIT[victim_block].num_partition; i++) {
-		index[i] = -1;
-	}
-	int copy_pages_num = 0;
-
-	int partition_num = 0;
-	while (temp != NULL) {
-		if (PVB[temp->partition_num].startPPN / PAGE_PER_BLOCK != victim_block) {
-			partition_startOff[partition_num] = 0;
-		}
-		else {
-			partition_startOff[partition_num] = PVB[temp->partition_num].startPPN%PAGE_PER_BLOCK;
-		}
-		
-		if (PVB[temp->partition_num].endPPN / PAGE_PER_BLOCK != victim_block) {
-			partition_endOff[partition_num] = PAGE_PER_BLOCK-1;
-		}
-		else {
-			partition_endOff[partition_num] = PVB[temp->partition_num].endPPN%PAGE_PER_BLOCK;
-		}
-		temp = temp->next;
-		partition_num++;
-	}
-
-	// copy the pages in each partition
-	for (i = 0; i < partition_num; i++) {
-		for (j = partition_startOff[i]; j <= partition_endOff[i]; j++) {
-			if (PB[victim_block].valid[j] == 1) {
-				if (index[i] == -1) {
-					index[i] = j;
-				}
-				copy_pages[copy_pages_num] = PB[victim_block].PPN2LPN[j];
-			}
-		}		
-	}
-
-	for(i)
-
-}
-#endif
 
 void BlockGC() {
 	
@@ -332,10 +261,10 @@ void BlockGC() {
 		int active_block = SIT[i].recentPPN / PAGE_PER_BLOCK;
 		if (active_block == victim_block) {
 			// close partition
-			if (SIT[i].recentPartition != -1) {
+			if (SIT[i].activePartition != -1) {
 				close_partition(i, BGC);
 			}
-			SIT[i].recentPartition = -1;
+			SIT[i].activePartition = -1;
 			SIT[i].recentLPN = -1;
 			SIT[i].recentPPN = -1;
 		}
@@ -385,7 +314,6 @@ void PartitionGC() {
 	PARTITIONGC_count();
 	/*********************/
 
-
 	int predict_copy = -1;
 
 	/* Select the victim cluster */
@@ -421,14 +349,12 @@ void PartitionGC() {
 		num_victim_partition++;
 		copy_index = victim_page_num;
 
-		//victim_partition[
-
 		// one block in partition
 		if (PVB[victim_partition_num].blocknum == 1) {
 			int block = PVB[victim_partition_num].block[0];
 			if (block != -2) {
-				int start_off = PVB[victim_partition_num].startPPN%PAGE_PER_BLOCK;
-				int end_off = PVB[victim_partition_num].endPPN%PAGE_PER_BLOCK;
+				int start_off = PVB[victim_partition_num].startPPN % PAGE_PER_BLOCK;
+				int end_off = PVB[victim_partition_num].endPPN % PAGE_PER_BLOCK;
 				int i;
 
 				for (i = start_off; i <= end_off; i++) {
@@ -443,8 +369,8 @@ void PartitionGC() {
 		}
 		else {
 			int block = PVB[victim_partition_num].block[0];
-			int start_off = PVB[victim_partition_num].startPPN%PAGE_PER_BLOCK;
-			int end_off = PVB[victim_partition_num].endPPN%PAGE_PER_BLOCK;
+			int start_off = PVB[victim_partition_num].startPPN % PAGE_PER_BLOCK;
+			int end_off = PVB[victim_partition_num].endPPN % PAGE_PER_BLOCK;
 			int i;
 			if (block != -2) {
 
