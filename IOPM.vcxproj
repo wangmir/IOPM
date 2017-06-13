@@ -158,6 +158,7 @@
     <ClInclude Include="init.h" />
     <ClInclude Include="iopm.h" />
     <ClInclude Include="iopm_map.h" />
+    <ClInclude Include="list.h" />
     <ClInclude Include="main.h" />
     <ClInclude Include="random.h" />
   </ItemGroup>

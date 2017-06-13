@@ -28,6 +28,7 @@ int main(int argc, char *argv[]) {
 	break_GC = 0;
 	close_partitionGC = 0;
 	close_blockGC = 0;
+
 	/* Aging */
 	if (AGINGFILE == NULL){
 		// seq

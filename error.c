@@ -3,6 +3,7 @@
 #include "main.h"
 #include "init.h"
 
+#if 0
 
 void error_victim_partition_flag(int cluster) {
 
@@ -542,4 +543,5 @@ void check_free_partition_pool() {
 void COUNT_write(int write) {
 	assert(COUNT.write != write);
 }
+#endif
 #endif

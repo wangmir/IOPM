@@ -1,5 +1,7 @@
-#include <stdio.h>
+#ifndef _IOPM_MAP_H
+#define _IOPM_MAP_H
 
+#include <stdio.h>
 
 int select_stream(int LPN, int IO_type);
 void check_partition_gc(int flag);
@@ -9,7 +11,6 @@ void invalid_page_cluster(int old_LPN, int old_partition);
 void free_full_invalid_partition(int partition);
 void allocate2free_partition_pool(int victim_partition);
 
-void remove_partition_in_order(int partition);
 void remove_partition_in_block(int partition, int *block, int block_num);
 void insert_block_to_PVB(int partition, int block);
 
@@ -41,4 +42,5 @@ void invalid_block_in_partition(int victim_block);
 int select_victim_block();
 int select_victim_cluster(int *predict);
 void remove_partition_in_cluster(int partition, int cluster, int IO_type);
-int get_partitions_in_cluster(int victim_cluster);
+
+#endif
