@@ -553,20 +553,7 @@ void command_setting(int argc, char *argv[]) {
 	printf("[DEBUG] RANDOM_INCREASE : %d\n", RANDOM_INCREASE);
 	printf("[DEBUG] RANDOM_SIZE : %d\n", RANDOM_SIZE);*/
 
-
-	// create the PB map
-	PB = (_PB *)malloc(sizeof(_PB) * FREE_BLOCK);
-
-	for (i = 0; i<FREE_BLOCK; i++) {
-
-		PB[i].valid = (int *)malloc(sizeof(int) * PAGE_PER_BLOCK);
-		PB[i].PPN2LPN = (int *)malloc(sizeof(int) * PAGE_PER_BLOCK);
-
-		for (j = 0; j<PAGE_PER_BLOCK; j++) {
-			PB[i].valid[j] = -1;
-			PB[i].PPN2LPN[j] = -1;
-		}
-	}
+	NAND_init();
 }
 
 int parsing_size(char * str) {
@@ -594,7 +581,7 @@ void count_init() {
 	COUNT.partition.gc_write = 0;
 	COUNT.block.gc = 0;
 	COUNT.block.gc_read = 0;
-	COUNT.null_p = 0;
+	COUNT.null_partition = 0;
 	COUNT.block.gc_write = 0;
 }
 
@@ -725,7 +712,7 @@ void print_count(char * file, int trace_total_write) {
 	fprintf(fp, "%d, ", COUNT.partition.gc_write);
 	fprintf(fp, "%d, ", COUNT.partition.gc_read);
 	fprintf(fp, "%d, ", COUNT.partition.gc);
-	fprintf(fp, "%d, ", COUNT.null_p);
+	fprintf(fp, "%d, ", COUNT.null_partition);
 	fprintf(fp, "%d, ", break_GC);
 	fprintf(fp, "%d, ", close_partitionGC);
 	fprintf(fp, "%d, ", close_blockGC);
@@ -905,7 +892,7 @@ void print_count(char * file, int trace_total_write) {
 	fprintf(fp, "%d, ", COUNT.partition.gc_write);
 	fprintf(fp, "%d, ", COUNT.partition.gc_read);
 	fprintf(fp, "%d, ", COUNT.partition.gc);
-	fprintf(fp, "%d, ", COUNT.null_p);
+	fprintf(fp, "%d, ", COUNT.null_partition);
 	fprintf(fp, "%d, ", COUNT.IO_mem);
 	fprintf(fp, "%d, ", COUNT.IO_mem_M);
 	fprintf(fp, "%d, ", COUNT.block.mem);

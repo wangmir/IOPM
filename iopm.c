@@ -52,11 +52,22 @@ void IOPM_write(int LPN, int IO_type) {
 	WRITE_count(IO_type);
 	/*********************/
 
-	// variables
 	int overwrite_partition = -1;
 	int overwrite_PPN = -1;
+
 	int partition = -1;
+	_PVB *ppvb = NULL;
+
+	int block = -1;
+	_BIT *pbit = NULL;
+
+	int cluster = CLUSTER_FROM_LPN(LPN);
+	_CLUSTER *pcluster = &CLUSTER[cluster];
 	
+	// Select the Stream
+	int stream = select_stream(LPN, IO_type);
+	_SIT *psit = &SIT[stream];
+
 	// Check Overwrite
 	if (IO_type == IO_WRITE) {
 		overwrite_partition = LPN2Partition(LPN, IO_type);
@@ -66,165 +77,98 @@ void IOPM_write(int LPN, int IO_type) {
 		}
 	}
 
-	// Select the Stream
-	int stream = select_stream(LPN, IO_type);
-
-	int new_partition_flag = 0;
 	int new_block_flag = 0;
 
-	// need to allocate new partition
-	if (LPN <= SIT[stream].recentLPN || SIT[stream].recentLPN == -1 || (LPN - PVB[SIT[stream].activePartition].startLPN) >= PAGE_PER_PARTITION) {
-		new_partition_flag = 1;	
-	}
-	
-	// need to allocate new block
-	if ((SIT[stream].recentPPN + 1) % PAGE_PER_BLOCK == 0) {
+	// Check the stream status for a write
+	// 1. do we need to allocate a new physical block?
+	if (IS_BLOCK_FULL(psit->recentPPN)) {
+		block = allocate_block();
+		pbit = &BIT[block];
 		new_block_flag = 1;
-	}
 
-	if (new_block_flag == 1 && new_partition_flag == 1) {
-		// close stream
-		if (SIT[stream].activePartition != -1) {
-			close_partition(stream, IO_type);
-			SIT[stream].activePartition = -1;
-			SIT[stream].recentLPN = -1;
-		}
-		// allocate new partition
-		partition = allocate_partition(IO_type);
-
-		int block = allocate_block();
-
-		PVB[partition].block[PVB[partition].blocknum] = block;
-		PVB[partition].startPPN = block * PAGE_PER_BLOCK;
-		PVB[partition].blocknum++;
-
-		// newly allocated PPN
-		SIT[stream].recentPPN = block * PAGE_PER_BLOCK;
-
-		// FIXME: need to fix start LPN to cluster aligned address in order to allocate partition in aligned
-		PVB[partition].startLPN = LPN;
-		PVB[partition].startPPN = SIT[stream].recentPPN;
-
-		int cluster = allocate_partition_to_cluster(LPN, partition);
-		CLUSTER[cluster].num_partition++;
-
-		SIT[stream].activePartition = partition;
-		// partition_valid_check(partition);
-		BIT[block].partition[BIT[block].num_partition] = partition;
-		BIT[block].num_partition++;
-
-	}
-	else if (new_block_flag == 0 && new_partition_flag == 1) {
-
-		// close stream
-		if (SIT[stream].activePartition != -1) {
-			close_partition(stream, IO_type);
-			SIT[stream].activePartition = -1;
-			SIT[stream].recentLPN = -1;
-		}
-		SIT[stream].recentPPN = SIT[stream].recentPPN + 1;
-
-
-		// allocate new partition
-		partition = allocate_partition(IO_type);
-
-		int block = SIT[stream].recentPPN / PAGE_PER_BLOCK;
-		PVB[partition].startLPN = LPN;
-		PVB[partition].startPPN = SIT[stream].recentPPN;
-		PVB[partition].block[PVB[partition].blocknum] = SIT[stream].recentPPN/PAGE_PER_BLOCK;
-		PVB[partition].blocknum++;
-
-		int cluster = allocate_partition_to_cluster(LPN, partition);
-		CLUSTER[cluster].num_partition++;
-		//victim_partition_flag_check(cluster);
-
-		SIT[stream].activePartition = partition;
-		//partition_valid_check(partition);
-
-		BIT[block].partition[BIT[block].num_partition] = partition;
-		BIT[block].num_partition++;
-
-
-	}
-	else if (new_block_flag == 1 && new_partition_flag == 0){
-		partition = SIT[stream].activePartition;
-		
-		int block = allocate_block();
-		PVB[partition].block[PVB[partition].blocknum] = block;
-		PVB[partition].blocknum++;
-		SIT[stream].recentPPN = block * PAGE_PER_BLOCK;
-		//partition_valid_check(partition);
-
-		BIT[block].partition[BIT[block].num_partition] = partition;
-		BIT[block].num_partition++;
-
+		psit->recentPPN = block * PAGE_PER_BLOCK;
 	}
 	else {
+		block = BLOCK_FROM_PPN(psit->recentPPN);
+		pbit = &BIT[block];
 
-		partition = SIT[stream].activePartition;
-		SIT[stream].recentPPN++;
-		//partition_valid_check(partition);
-
+		psit->recentPPN++;
 	}
 
+	// 2. do we need to allocate a new partition?
+	if (psit->recentLPN == -1 || LPN <= psit->recentLPN) {
+
+		// close previous partition if exist
+		if (psit->activePartition != -1)
+			close_partition(stream, IO_type);
+
+		partition = allocate_partition(IO_type);
+		ppvb = &PVB[partition];
+
+		ppvb->block[ppvb->blocknum] = block;
+		ppvb->blocknum++;
+
+		ppvb->startPPN = psit->recentPPN;
+
+		// for aligned partition alloc
+		// for future, startLPN can be deleted
+		ppvb->startLPN = cluster * PAGE_PER_CLUSTER;
+		insert_partition_into_cluster(cluster, partition);
+
+		psit->activePartition = partition;
+
+		BIT[block].num_partition++;
+	}
+	else {
+		partition = psit->activePartition;
+		ppvb = &PVB[partition];
+
+		if (new_block_flag) {
+
+			ppvb->block[ppvb->blocknum] = block;
+			ppvb->blocknum++;
+
+			pbit->num_partition++;
+		}
+	}
+
+	// do write
+	NAND_write(psit->recentPPN, LPN);
+
 	// Set SIT
-	SIT[stream].recentLPN = LPN;
+	psit->recentLPN = LPN;
 
 	// Set PVB
-	insert_bitmap(partition, LPN-PVB[partition].startLPN);
-	PVB[partition].valid++;
+	insert_bitmap(partition, LPN - ppvb->startLPN);
+	ppvb->valid++;
 
 	// Set CLUSTER
-	CLUSTER[PVB[partition].startLPN / PAGE_PER_CLUSTER].valid++;
-	// Set PB
-	int block = SIT[stream].recentPPN / PAGE_PER_BLOCK;
-	int offset = SIT[stream].recentPPN % PAGE_PER_BLOCK;
-
-
-	assert(PB[block].PPN2LPN[offset] == -1);
-	PB[block].valid[offset] = 1;
-	PB[block].PPN2LPN[offset] = LPN;
-	
-	//if(IO_type == IO_WRITE)
-	//	victim_partition_flag_check(PVB[partition].startLPN / PAGE_PER_CLUSTER);
+	pcluster->valid++;
 
 	// invalid old data
 	if (overwrite_PPN != -1 && IO_type == IO_WRITE) {
+
 		COUNT.overwrite++;
 		// error check
-		error_LPN_PPN(LPN, overwrite_PPN);	
+		error_LPN_PPN(LPN, overwrite_PPN);
 
-		// invalid PB
-		PB[overwrite_PPN/PAGE_PER_BLOCK].valid[overwrite_PPN % PAGE_PER_BLOCK] = 0;
-		PB[overwrite_PPN / PAGE_PER_BLOCK].PPN2LPN[overwrite_PPN % PAGE_PER_BLOCK] = -1;
+		// unset page valid bit
+		NAND_invalidate(overwrite_PPN);
 
 		// invalid PVB
-		PVB[overwrite_partition].valid--;
+		if(!(--ppvb->valid))
+            free_full_invalid_partition(overwrite_partition);
 
 		// BIT
-		BIT[overwrite_PPN / PAGE_PER_BLOCK].invalid++;
+		if((++pbit->invalid) == PAGE_PER_BLOCK)
+            put_block(pbit->block_num, IO_type);
 
 		// invalid cluster
-		int cluster = PVB[overwrite_partition].startLPN / PAGE_PER_CLUSTER;
-		CLUSTER[cluster].valid--;	
-
-	//	victim_partition_flag_check(cluster);
-
-		//cluster_vicitm_valid(cluster);
-		if (PVB[overwrite_partition].valid == 0) {
-			invalid_page_cluster(LPN, overwrite_partition);
-			free_full_invalid_partition(overwrite_partition);
-		}
-		else {
-			// remove the cluster - VICTIM VALID인 경우 CHECK
-			invalid_page_cluster(LPN, overwrite_partition);
-		}
-
-
+		pcluster->valid--;
 	}
-	//partition_valid_check(partition);
+
 	// do partition gc
-	check_partition_gc(IO_type);
+	do_gc_if_needed(IO_type);
 	//SIT_debug();
 }
 
@@ -236,10 +180,10 @@ void BlockGC() {
 
 	int victim_block = 0;
 	
-	int flag = 1;	//flag == 0 : get the block in full invalid 1 : get the block in allocated
-	
 	/* Select victim block */
-	victim_block = select_victim_block(&flag);
+	victim_block = select_victim_block();
+
+	_BIT *pbit = &BIT[victim_block];
 
 	/* Copy the valid pages in Physical Block */
 	victim_page_num = 0;
@@ -277,7 +221,6 @@ void BlockGC() {
 		// write&remove the pages
 		for (i = 0; i < victim_page_num; i++) {
 			// write page
-			// 느리다면 여길 바꾸자.
 			int partition = LPN2Partition_limit(victim_page_LPN[i], victim_block, BGC);
 			assert(partition != -1);
 			IOPM_write(victim_page_LPN[i], BGC);
@@ -285,26 +228,13 @@ void BlockGC() {
 		}
 	}
 
-
 	/* invalid victim block in partition */
 	if(BIT[victim_block].num_partition != 0)
 		invalid_block_in_partition(victim_block);
 
-	/* Init BIT map */
-	BIT[victim_block].invalid = 0;
-	//BIT[victim_block].partition;
-	memset(BIT[victim_block].partition, -1, PAGE_PER_BLOCK);
-	BIT[victim_block].num_partition = 0;
-
-	/* Init PB structure*/
-	for (i = 0; i < PAGE_PER_BLOCK; i++) {
-		PB[victim_block].PPN2LPN[i] = -1;
-		PB[victim_block].valid[i] = -1;
-	}
-	
 	/* remove block from allocate to free list*/
-	allocate2free_block_pool(victim_block, flag);
-
+	put_block(victim_block, flag);
+    NAND_erase(victim_block);
 }
 
 
@@ -352,7 +282,7 @@ void PartitionGC() {
 		// one block in partition
 		if (PVB[victim_partition_num].blocknum == 1) {
 			int block = PVB[victim_partition_num].block[0];
-			if (block != -2) {
+			if (block != PVB_BLOCK_RECLAIMED) {
 				int start_off = PVB[victim_partition_num].startPPN % PAGE_PER_BLOCK;
 				int end_off = PVB[victim_partition_num].endPPN % PAGE_PER_BLOCK;
 				int i;
@@ -372,7 +302,7 @@ void PartitionGC() {
 			int start_off = PVB[victim_partition_num].startPPN % PAGE_PER_BLOCK;
 			int end_off = PVB[victim_partition_num].endPPN % PAGE_PER_BLOCK;
 			int i;
-			if (block != -2) {
+			if (block != PVB_BLOCK_RECLAIMED) {
 
 				// first block
 				for (i = start_off; i < PAGE_PER_BLOCK; i++) {
@@ -389,7 +319,7 @@ void PartitionGC() {
 			int j;
 			for (j = 1; j < PVB[victim_partition_num].blocknum - 1; j++) {
 				block = PVB[victim_partition_num].block[j];
-				if (block != -2) {
+				if (block != PVB_BLOCK_RECLAIMED) {
 					for (i = 0; i < PAGE_PER_BLOCK; i++) {
 						if (PB[block].valid[i] == 1) {
 							victim_page_LPN[victim_page_num] = PB[block].PPN2LPN[i];
@@ -403,7 +333,7 @@ void PartitionGC() {
 			
 			// last block
 			block = PVB[victim_partition_num].block[PVB[victim_partition_num].blocknum-1];
-			if (block != -2) {
+			if (block != PVB_BLOCK_RECLAIMED) {
 				for (i = 0; i <= end_off; i++) {
 					if (PB[block].valid[i] == 1) {
 						victim_page_LPN[victim_page_num] = PB[block].PPN2LPN[i];
@@ -476,16 +406,16 @@ void PartitionGC() {
 		int temp_victim_partition = victim_partition[i];
 		//PVB[temp_victim_partition].valid--;
 		int block_num = 0;
-		int j;
+
 		// remove partition in block
-		for (j = 0; j < PVB[temp_victim_partition].blocknum; j++) {
-			if (PVB[temp_victim_partition].block[j] != -2) {
+		for (int j = 0; j < PVB[temp_victim_partition].blocknum; j++) {
+			if (PVB[temp_victim_partition].block[j] != PVB_BLOCK_RECLAIMED) {
 				remove_block_in_partition[block_num] = PVB[temp_victim_partition].block[j];
 				block_num++;
 			}
 		}
-		// remove blocks in partition(PVB)
-		remove_partition_in_block(temp_victim_partition, remove_block_in_partition, block_num);
+		// remove blocks in partition (PVB)
+		unlink_partition_from_BIT(temp_victim_partition, remove_block_in_partition, block_num);
 
 		// cluster 재조정
 		remove_partition_from_cluster(temp_victim_partition, victim_cluster, PGC);

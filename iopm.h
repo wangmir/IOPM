@@ -9,7 +9,10 @@
 #define BGC 3
 
 #define CLUSTER_FROM_LPN(LPN) ((LPN) / PAGE_PER_CLUSTER)
+#define BLOCK_FROM_PPN(PPN) ((PPN) / PAGE_PER_BLOCK)
+#define OFFSET_FROM_PPN(PPN) ((PPN) % PAGE_PER_BLOCK)
 
+#define IS_BLOCK_FULL(PPN) ((PPN + 1) % PAGE_PER_BLOCK == 0)	// also if 0 when the block is not allocated (-1)
 
 /*
 * Mapping Structure
@@ -23,7 +26,7 @@ typedef struct _PVB {
 	int endPPN;								// end physical page number
 	int valid;								// number of valid page in partition
 	int *block;								// blocks allocated in partition
-	int blocknum;							// 
+	int blocknum;							// # of blocks allocated in this partition
 	int active_flag;						// active partition or not.
 	int victim_partition_flag;				// set if this partition is victim for GC
 
@@ -43,14 +46,12 @@ struct list_head free_partition_pool;
 typedef struct _CLUSTER {
 	int valid;						// # of valid page in cluster
 	int num_partition;				// # of partition in cluster
-	int victim_valid;				// # of valid pages in the front n.
-	int victim_partition_num;
 
 	int cluster_num;
 
 	struct list_head p_list;		// partition list head to queue allocated partition
+									// p_list is LRU list for the partition, active partition will be MRU partition
 	struct list_head c_list;		// list for cluster
-	
 }_CLUSTER;
 
 _CLUSTER *CLUSTER;
@@ -73,7 +74,6 @@ struct list_head free_stream_pool;
 /* BIT : Block Information Table. */
 typedef struct _BIT {
 	int invalid;							// # of invalid page in block
-	int *partition;	// partition mapping to block 
 	int num_partition;						// number of partition in block
 
 	int block_num;
@@ -85,13 +85,10 @@ _BIT *BIT;
 
 struct list_head allocated_block_pool;
 struct list_head free_block_pool;
-struct list_head full_invalid_block_pool;
 
 int free_partition;
 int free_block;
 int current_order;
-
-int full_invalid_block_num;
 
 int * remove_block_in_partition;
 

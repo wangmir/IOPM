@@ -39,7 +39,7 @@ void init_COUNT() {
 	COUNT.block.gc_read = 0;
 	COUNT.block.gc_write = 0;
 	COUNT.block.mem = 0;
-	COUNT.null_p = 0;
+	COUNT.null_partition = 0;
 	COUNT.overwrite = 0;
 }
 
@@ -82,7 +82,6 @@ void init_BIT() {
 
 	INIT_LIST_HEAD(&allocated_block_pool);
 	INIT_LIST_HEAD(&free_block_pool);
-	INIT_LIST_HEAD(&full_invalid_block_pool);
 
 	BIT = (_BIT *)malloc(sizeof(_BIT) * FREE_BLOCK);
 

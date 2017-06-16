@@ -160,6 +160,7 @@
     <ClInclude Include="iopm_map.h" />
     <ClInclude Include="list.h" />
     <ClInclude Include="main.h" />
+    <ClInclude Include="nand.h" />
     <ClInclude Include="random.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -1,9 +1,15 @@
+#ifndef _MAIN_H
+#define _MAIN_H
+
 #pragma warning(disable:4996)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <math.h>
+
+#include "nand.h"
+
 // Storage
 long long int KB;
 long long int MB;
@@ -49,7 +55,6 @@ int PAGE_PER_CLUSTER;	//CLUSERT_SIZE/PAGE_SIZE
 int PARTITION_PER_BLOCK;
 int BLOCK_PER_PARTITION;
 
-
 // GC point
 int PARTITION_LIMIT;
 int BLOCK_LIMIT;
@@ -87,13 +92,6 @@ int MTB;
 *	Structures
 */
 
-// physical block
-typedef struct _PB {
-	int *PPN2LPN;		// store LPN to PPN
-	int *valid;		// page's validity
-}_PB;
-
-
 // count information
 typedef struct _GC {
 	int gc_read;
@@ -110,12 +108,11 @@ typedef struct _COUNT {
 	struct _GC block;
 	long long int IO_mem;
 	int IO_mem_M;
-	int null_p;
+	int null_partition;
 	int overwrite;
 	//int nand;
 }_COUNT;
 
-_PB *PB;
 _COUNT COUNT;
 
 char * INPUT_FILENAME;
@@ -140,3 +137,5 @@ void BLOCKGC_WRITE_count();
 //void BLOCKGC_MEM_count();
 void MEM_COUNT_IO(int host);
 //void MEM_COUNT_IO(int MEM_HOST);
+
+#endif

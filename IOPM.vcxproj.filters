@@ -56,5 +56,8 @@
     <ClInclude Include="list.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="nand.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
