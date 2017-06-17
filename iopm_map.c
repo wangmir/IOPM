@@ -241,40 +241,6 @@ void swap(int* a, int* b) {
 	*b = tmp;
 }
 
-void quick_sort(int * array_lpn, int * array_ppn, int start, int end) {
-
-	if (start >= end) return;
-
-	int mid = (start + end) / 2;
-	int pivot = array_lpn[mid];
-
-	swap(&array_lpn[start], &array_lpn[mid]);
-	swap(&array_ppn[start], &array_ppn[mid]);
-
-	int p = start + 1, q = end;
-
-	while (1) {
-		while (array_lpn[p] <= pivot && p <= end) {
-			p++;
-		}
-		while (array_lpn[q]>pivot && q >= 0) {
-			q--;
-		}
-
-		if (p>q) break;
-
-		swap(&array_lpn[p], &array_lpn[q]);
-		swap(&array_ppn[p], &array_ppn[q]);
-	}
-
-	swap(&array_lpn[start], &array_lpn[q]);
-	swap(&array_ppn[start], &array_ppn[q]);
-
-	quick_sort(array_lpn, array_ppn, start, q - 1);
-	quick_sort(array_lpn, array_ppn, q + 1, end);
-
-}
-
 int LPN2Partition(int LPN, int IO_type) {
 
 	int cluster = CLUSTER_FROM_LPN(LPN);
@@ -297,70 +263,6 @@ int LPN2Partition(int LPN, int IO_type) {
 	// there are no valid page for LPN
 	return -1;
 }
-
-int LPN2Partition_limit(int LPN, int victim, int IO_type) {
-	// variables
-	int partition_return = -1;
-	int i;
-
-	//_partition_in_block *temp = BIT[victim].partition;
-
-	//while (temp != NULL) {
-	for(i=0;i<BIT[victim].num_partition;i++){
-		//int partition = temp->partition_num;
-		int partition = BIT[victim].partition[i];
-		int startLPN = PVB[partition].startLPN;
-		int offset = LPN - startLPN;
-		
-		if (offset >= 0 && offset < (PAGE_PER_PARTITION)) {
-			if (find_bitmap(partition, offset, IO_type) == 1) {
-				if (partition_return != -1) {
-					if (partition_order_compare(partition, partition_return, IO_type) && (PVB[partition].valid != 0)) {
-						partition_return = partition;
-					}
-				}
-				else {
-					if (PVB[partition].valid != 0) {
-						partition_return = partition;
-					}
-				}
-			}
-		}
-	}
-
-	return partition_return;
-}
-
-int partition_order_compare(int a, int b, int IO_type) {
-	// return 1 if a가 b보다 최신일때 
-	
-	_partition *temp = allocated_partition_pool;
-
-	if (temp->partition_num == a) {
-		MEM_COUNT_IO(IO_type);
-		return 0;
-	}
-	else if (temp->partition_num == b) {
-		MEM_COUNT_IO(IO_type);
-		return 1;
-	}
-	else {
-		//temp = temp->next;
-		temp = temp->prev;
-		while (temp->partition_num != allocated_partition_pool->partition_num) {
-			MEM_COUNT_IO(IO_type);
-			if (temp->partition_num == a) {
-				return 1;
-			}
-			else if (temp->partition_num == b) {
-				return 0;
-			}
-			temp = temp->prev;
-		}
-	}
-	return -1;
-}
-
 
 int Partition2PPN(int LPN, int partition, int IO_type) {
 
@@ -489,26 +391,16 @@ void close_partition(int stream, int IO_type) {
 	psit->recentLPN = -1;
 }
 
-void remove_page(int partition, int PPN, int flag) {
-	// if flag = 0 : blockGC. no need to decrease the valid page in block
-	int cluster_num = PVB[partition].startLPN / PAGE_PER_CLUSTER;
+void unlink_page(int partition, int PPN, int flag) {
 
-	//error_cluster_move_check(cluster_num);
+	int cluster_num = PVB[partition].startLPN / PAGE_PER_CLUSTER;
 
 	// PVB
 	PVB[partition].valid--;
 	// Cluster
 	CLUSTER[cluster_num].valid--;
 
-	//int prev_victim = CLUSTER[cluster_num].victim_valid;
-
-	// update cluster
 	invalid_page_cluster(0, partition);
-
-	//int block = PPN / PAGE_PER_BLOCK;
-	//BIT[block].invalid++;
-	//PB[block].valid--;
-	//PB[block].PPN2LPN[PPN%PAGE_PER_BLOCK] = 0;
 
 }
 
@@ -549,16 +441,17 @@ void invalid_block_in_partition(int victim_block) {
 }
 
 int select_victim_block() {
-    
-    _BIT *pbit = NULL;
+	_BIT *pbit = NULL;
 
-    int victim_block, max_invalid = 0;
+	int victim_block, max_invalid = 0;
 
-    list_for_each_entry(_BIT, pbit, &allocated_block_pool, b_list){
-            if(pbit->invalid > max_invalid)
-                victim_block = pbit->block_num;
-    }
-    
+	list_for_each_entry(_BIT, pbit, &allocated_block_pool, b_list) {
+		if (pbit->is_active)
+			continue;
+		if (pbit->invalid > max_invalid)
+			victim_block = pbit->block_num;
+	}
+
 	return victim_block;
 }
 
@@ -590,153 +483,3 @@ int select_victim_cluster(int *predict) {
 	return 0;
 
 }
-
-
-
-
-#if 0
-int select_victim_cluster() {
-	
-	int i;
-	int victim_cluster = -1;
-	int valid_in_vicim_cluster = FREE_BLOCK * PAGE_PER_BLOCK;
-
-
-	for (i = 0; i < NUMBER_STREAM; i++) {
-		int partition = SIT[i].activePartition;
-		if (partition != -1) {
-			int cluster = PVB[partition].startLPN / PAGE_PER_CLUSTER;
-			CLUSTER[cluster].valid = CLUSTER[cluster].valid - PVB[partition].valid;
-			CLUSTER[cluster].num_partition--;
-		}
-	}
-
-	int * arr_valid = (int *)malloc(sizeof(int)*(int)(NUMBER_PARTITION));
-	int * arr_partition = (int *)malloc(sizeof(int)*NUMBER_PARTITION);
-	int num = 0;
-	int j;
-	int valid_num = 0;
-	// select victim cluster;
-	for (i = 0; i < NUMBER_CLUSTER; i++) {
-		
-		// get the smallest things.
-		_CLUSTER_PARTITION * temp = CLUSTER[i].cluster;
-		num = 0;
-		while (temp != NULL) {
-			if (PVB[temp->partition].active_flag == 0) {
-				arr_partition[num] = temp->partition;
-				arr_valid[num] = PVB[temp->partition].valid;
-				num++;
-			}
-			temp = temp->next;
-		}
-
-		quickSort(arr_valid, arr_partition, 0, num - 1);
-		valid_num = 0;
-		for (j = 0; j < PARTITION_PER_CLUSTER + 2; j++) {
-			valid_num = valid_num + arr_valid[j];
-		}
-
-
-		if (CLUSTER[i].num_partition != 0) {
-			if (valid_num < valid_in_vicim_cluster && (CLUSTER[i].num_partition > PARTITION_PER_CLUSTER + 1)) {
-				//if ((CLUSTER[i].valid < valid_in_vicim_cluster) && (CLUSTER[i].num_partition > PARTITION_PER_CLUSTER + 1)) {
-				victim_cluster = i;
-				valid_in_vicim_cluster = valid_num;
-			}
-		}
-	}
-	
-	
-	
-	for (i = 0; i < NUMBER_STREAM; i++) {
-		int partition = SIT[i].activePartition;
-		if (partition != -1) {
-			int cluster = PVB[partition].startLPN / PAGE_PER_CLUSTER;
-			CLUSTER[cluster].valid = CLUSTER[cluster].valid + PVB[partition].valid;
-			CLUSTER[cluster].num_partition++;
-		}
-	}
-	free(arr_valid);
-	free(arr_partition);
-	return victim_cluster;
-}
-#endif
-
-
-#if 0
-int select_victim_cluster() {
-	int i;
-	int victim_cluster = -1;
-	int valid_in_vicim_cluster = FREE_BLOCK * PAGE_PER_BLOCK;
-
-	
-	for (i = 0; i < NUMBER_STREAM; i++) {
-		int partition = SIT[i].activePartition;
-		if (partition != -1) {
-			int cluster = PVB[partition].startLPN / PAGE_PER_CLUSTER;
-			CLUSTER[cluster].valid = CLUSTER[cluster].valid - PVB[partition].valid;
-			CLUSTER[cluster].num_partition--;
-		}	
-	}
-
-	// select victim cluster;
-	for (i = 0; i < NUMBER_CLUSTER; i++) {
-		if (CLUSTER[i].num_partition != 0) {
-			if (((double)((double)CLUSTER[i].valid / (double)CLUSTER[i].num_partition)< valid_in_vicim_cluster) && (CLUSTER[i].num_partition > PARTITION_PER_CLUSTER + 1)) {
-			//if ((CLUSTER[i].valid < valid_in_vicim_cluster) && (CLUSTER[i].num_partition > PARTITION_PER_CLUSTER + 1)) {
-				victim_cluster = i;
-				valid_in_vicim_cluster = CLUSTER[i].valid / (double)CLUSTER[i].num_partition;
-			}
-		}	
-	}
-	for (i = 0; i < NUMBER_STREAM; i++) {
-		int partition = SIT[i].activePartition;
-		if (partition != -1) {
-			int cluster = PVB[partition].startLPN / PAGE_PER_CLUSTER;
-			CLUSTER[cluster].valid = CLUSTER[cluster].valid + PVB[partition].valid;
-			CLUSTER[cluster].num_partition++;
-		}
-	}
-	return victim_cluster;
-}
-#endif
-#if 0
-int select_victim_cluster() {
-	int i;
-	int victim_cluster = -1;
-	//double valid_in_vicim_cluster = FREE_BLOCK * PAGE_PER_BLOCK;
-	int valid_in_vicim_cluster = FREE_BLOCK * PAGE_PER_BLOCK;
-
-	//
-	//
-	for (i = 0; i < NUMBER_STREAM; i++) {
-		int partition = SIT[i].activePartition;
-		if (partition != -1) {
-			int cluster = PVB[partition].startLPN / PAGE_PER_CLUSTER;
-			CLUSTER[cluster].valid = CLUSTER[cluster].valid - PVB[partition].valid;
-			CLUSTER[cluster].num_partition--;
-		}
-	}
-
-	// select victim cluster;
-	for (i = 0; i < NUMBER_CLUSTER; i++) {
-		if (CLUSTER[i].num_partition != 0) {
-			if (((double)((double)CLUSTER[i].valid / (double)CLUSTER[i].num_partition)< valid_in_vicim_cluster) && (CLUSTER[i].num_partition > PARTITION_PER_CLUSTER + 1)) {
-				//if ((CLUSTER[i].valid < valid_in_vicim_cluster) && (CLUSTER[i].num_partition > PARTITION_PER_CLUSTER + 1)) {
-				victim_cluster = i;
-				valid_in_vicim_cluster = CLUSTER[i].valid / (double)CLUSTER[i].num_partition;
-			}
-		}
-	}
-	for (i = 0; i < NUMBER_STREAM; i++) {
-		int partition = SIT[i].activePartition;
-		if (partition != -1) {
-			int cluster = PVB[partition].startLPN / PAGE_PER_CLUSTER;
-			CLUSTER[cluster].valid = CLUSTER[cluster].valid + PVB[partition].valid;
-			CLUSTER[cluster].num_partition++;
-		}
-	}
-	return victim_cluster;
-}
-#endif

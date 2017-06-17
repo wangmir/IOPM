@@ -42,8 +42,24 @@ inline void NAND_invalidate(int PPN) {
 	PB[BLOCK_FROM_PPN(PPN)].valid[OFFSET_FROM_PPN(PPN)] = 0;
 }
 
-inline void NAND_read() {
+inline int NAND_read(int PPN) {
 
+	return PB[BLOCK_FROM_PPN(PPN)].PPN2LPN[OFFSET_FROM_PPN(PPN)];
+}
+
+inline int NAND_read(int PBN, int offset){
+
+	return PB[PBN].PPN2LPN[offset];
+}
+
+inline int NAND_is_valid(int PPN) {
+
+	return PB[BLOCK_FROM_PPN(PPN)].valid[OFFSET_FROM_PPN(PPN)];
+}
+
+inline int NAND_is_valid(int PBN, int offset) {
+
+	return PB[PBN].valid[offset];
 }
 
 inline void NAND_erase(int block) {

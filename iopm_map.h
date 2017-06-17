@@ -22,11 +22,8 @@ int allocate_block();
 int allocate_partition(int flag);
 void insert_partition_into_cluster(int cluster, int partition);
 void swap(int* a, int* b);
-void quick_sort(int * array_lpn, int * array_ppn, int start, int end);
 
 int LPN2Partition(int LPN, int read);
-int LPN2Partition_limit(int LPN, int victim, int IO_type);
-int partition_order_compare(int a, int b, int read);
 int Partition2PPN(int LPN, int partition, int read);
 int physical_offset(int partition, int log_offset, int read);
 int logical_offset(int partition, int LP, int read);
@@ -35,7 +32,7 @@ void quickSort(int arr[], int b[], int left, int right);
 void close_partition(int stream, int IO_type);
 
 
-void remove_page(int partition, int PPN, int flag);
+void unlink_page(int partition, int PPN, int flag);
 void put_block(int victim_block, int flag);
 void invalid_block_in_partition(int victim_block);
 int select_victim_block();

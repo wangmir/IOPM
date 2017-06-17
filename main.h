@@ -125,7 +125,7 @@ int parsing_size(char * str);
 void print_count(char * file, int trace_total_write);
 void count_init();
 void READ_count();
-void WRITE_count();
+void WRITE_count(int flag);
 void PARTITIONGC_count();
 void BLOCKGC_count();
 void PARTITIONGC_READ_count();

@@ -19,8 +19,8 @@ void init() {
 	ALLOC_PARTITION = 0;
 
 
-	victim_page_LPN = (int *)malloc(sizeof(int)*(PARTITION_PER_CLUSTER + 2)*(PAGE_PER_PARTITION));
-	victim_page_PPN = (int *)malloc(sizeof(int)*(PARTITION_PER_CLUSTER + 2)*(PAGE_PER_PARTITION));
+	GC_temp_LPN = (int *)malloc(sizeof(int)*(PARTITION_PER_CLUSTER + 2)*(PAGE_PER_PARTITION));
+	GC_temp_PPN = (int *)malloc(sizeof(int)*(PARTITION_PER_CLUSTER + 2)*(PAGE_PER_PARTITION));
 	victim_partition = (int *)malloc(sizeof(int)*(PARTITION_PER_CLUSTER + 2));
 
 	remove_block_in_partition = (int *)malloc(sizeof(int) * BLOCK_PER_PARTITION);
@@ -84,11 +84,11 @@ void init_BIT() {
 	INIT_LIST_HEAD(&free_block_pool);
 
 	BIT = (_BIT *)malloc(sizeof(_BIT) * FREE_BLOCK);
+	memset(BIT, 0x00, sizeof(_BIT) * FREE_BLOCK);
 
 	for (int i = 0; i < FREE_BLOCK; i++) {
-		BIT[i].invalid = 0;
-		BIT[i].num_partition = 0;
-		BIT[i].partition = (int*)malloc(sizeof(int)*PAGE_PER_BLOCK);
+		BIT[i].block_num = i;
+		BIT[i].free_flag = 1;
 		INIT_LIST_HEAD(&BIT[i].b_list);
 
 		list_add(&BIT[i].b_list, &free_block_pool);

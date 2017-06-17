@@ -11,6 +11,7 @@
 #define CLUSTER_FROM_LPN(LPN) ((LPN) / PAGE_PER_CLUSTER)
 #define BLOCK_FROM_PPN(PPN) ((PPN) / PAGE_PER_BLOCK)
 #define OFFSET_FROM_PPN(PPN) ((PPN) % PAGE_PER_BLOCK)
+#define PPN_FROM_PBN_N_OFFSET(PBN, offset) (offset + (PBN * PAGE_PER_BLOCK))
 
 #define IS_BLOCK_FULL(PPN) ((PPN + 1) % PAGE_PER_BLOCK == 0)	// also if 0 when the block is not allocated (-1)
 
@@ -75,6 +76,7 @@ struct list_head free_stream_pool;
 typedef struct _BIT {
 	int invalid;							// # of invalid page in block
 	int num_partition;						// number of partition in block
+	int is_active;				// if 1, then the block is in the stream
 
 	int block_num;
 	int free_flag;
@@ -92,10 +94,13 @@ int current_order;
 
 int * remove_block_in_partition;
 
+
 // data structure used for GC
-int * victim_page_LPN;
-int * victim_page_PPN;
-int victim_page_num;
+// cuz IOPM GC needs sorting to reduce the # of partition
+// we also need to examine the actual benefit from sorting
+int * GC_temp_LPN;
+int * GC_temp_PPN;
+int GC_temp_cnt;
 
 int * victim_partition;
 

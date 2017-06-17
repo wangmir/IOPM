@@ -863,9 +863,6 @@ void print_count(char * file, int trace_total_write) {
 			map_size = map_size / 8;
 		}
 	}
-	
-
-
 
 	if (AGINGFILE != NULL) {
 		fprintf(fp, "%s, ", AGINGFILE);
@@ -899,7 +896,10 @@ void print_count(char * file, int trace_total_write) {
 	fprintf(fp, "%d\n", COUNT.partition.mem);
 
 }
-void READ_count() {
+
+
+
+void READ_count(int flag) {
 	COUNT.read++;
 }
 
