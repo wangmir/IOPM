@@ -1,7 +1,6 @@
 #include "iopm.h"
 #include "main.h"
 #include "init.h"
-#include "list.h"
 
 
 void init() {
@@ -11,9 +10,6 @@ void init() {
 	init_BIT();
 	init_PVB();
 	init_COUNT();
-
-	init_partition_pool();
-	init_block_pool();
 
 	free_block = FREE_BLOCK;
 	ALLOC_PARTITION = 0;
@@ -90,9 +86,23 @@ void init_BIT() {
 		BIT[i].block_num = i;
 		BIT[i].free_flag = 1;
 		INIT_LIST_HEAD(&BIT[i].b_list);
+		INIT_LIST_HEAD(&BIT[i].linked_partition);
 
 		list_add(&BIT[i].b_list, &free_block_pool);
 	}
+
+	INIT_LIST_HEAD(&free_r_plist);
+
+	// block needs to map linked partition to handle block GC 
+	// at block GC, linked partition for the victim block should delete the block map at the PVB
+	int num_r_plist = NUMBER_PARTITION * (BLOCK_PER_PARTITION + 1);
+	r_plist = (_LIST_MAP *)malloc(sizeof(_LIST_MAP) * num_r_plist);
+
+	for (int i = 0; i < num_r_plist; i++) {
+		r_plist[i].value = -1;
+		list_add(&r_plist[i].list, &free_r_plist);
+	}
+
 }
 
 void init_SIT() {
@@ -140,7 +150,7 @@ void init_Partition(int partition) {
 	PVB[partition].free_flag = 1;
 	PVB[partition].victim_partition_flag = 0;
 	
-	LIST_INIT_HEAD(&PVB[partition].p_list);
+	INIT_LIST_HEAD(&PVB[partition].p_list);
 
 	// start/end를 제외한 가운데 block
 	for (int i = 0; i < BLOCK_PER_PARTITION + 1; i++) {

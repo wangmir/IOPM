@@ -7,10 +7,11 @@
 
 int select_stream(int LPN, int IO_type);
 void do_gc_if_needed(int flag);
-void remove_partition_from_cluster(int victim_partition, int victim_cluster, int IO_type);
+void remove_partition_from_cluster(int partition, int IO_type);
 
 void free_full_invalid_partition(int partition);
 
+void link_partition_to_BIT(int partition, int block);
 void unlink_partition_from_BIT(int partition);
 
 int find_bitmap(int partition, int offset, int read);
@@ -31,11 +32,11 @@ void two_bitmap(unsigned int n);
 void quickSort(int arr[], int b[], int left, int right);
 void close_partition(int stream, int IO_type);
 
-
-void unlink_page(int partition, int PPN, int flag);
 void put_block(int victim_block, int flag);
-void invalid_block_in_partition(int victim_block);
+void unlink_block_from_PVB(int victim_block);
+
 int select_victim_block();
-int select_victim_cluster(int *predict);
+int select_victim_cluster();
+void select_victim_partition(int cluster, int *p_array);
 
 #endif

@@ -9,11 +9,10 @@
 #define BGC 3
 
 #define CLUSTER_FROM_LPN(LPN) ((LPN) / PAGE_PER_CLUSTER)
-#define BLOCK_FROM_PPN(PPN) ((PPN) / PAGE_PER_BLOCK)
-#define OFFSET_FROM_PPN(PPN) ((PPN) % PAGE_PER_BLOCK)
-#define PPN_FROM_PBN_N_OFFSET(PBN, offset) (offset + (PBN * PAGE_PER_BLOCK))
 
-#define IS_BLOCK_FULL(PPN) ((PPN + 1) % PAGE_PER_BLOCK == 0)	// also if 0 when the block is not allocated (-1)
+#define MAX_NUM_PARTITION_PGC 4
+
+#define PGC_COPY_THRESHOLD 16	// do PGC more, if currently we did few copies.
 
 /*
 * Mapping Structure
@@ -81,6 +80,7 @@ typedef struct _BIT {
 	int block_num;
 	int free_flag;
 	struct list_head b_list;
+	struct list_head linked_partition;
 }_BIT;
 
 _BIT *BIT;
@@ -88,12 +88,21 @@ _BIT *BIT;
 struct list_head allocated_block_pool;
 struct list_head free_block_pool;
 
+typedef struct _LIST_MAP {
+	int value;
+	struct list_head list;
+}_LIST_MAP;
+
+_LIST_MAP *r_plist;		// reverse partition list for _BIT, 
+						// every block needs to keep track on associated partition
+
+struct list_head free_r_plist;
+
 int free_partition;
 int free_block;
 int current_order;
 
 int * remove_block_in_partition;
-
 
 // data structure used for GC
 // cuz IOPM GC needs sorting to reduce the # of partition

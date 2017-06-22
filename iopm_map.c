@@ -89,11 +89,12 @@ static void put_partition(int partition) {
 	init_Partition(partition);
 }
 
-void remove_partition_from_cluster(int partition, int cluster, int IO_type) {
+void remove_partition_from_cluster(int partition, int IO_type) {
 
-	_CLUSTER *pcluster = &CLUSTER[cluster];
+	
 	_PVB *ppvb = &PVB[partition];
-
+	int cluster = CLUSTER_FROM_LPN(ppvb->startLPN);
+	_CLUSTER *pcluster = &CLUSTER[cluster];
 	pcluster->valid -= ppvb->valid;
 	pcluster->num_partition--;
 		
@@ -105,7 +106,6 @@ void free_full_invalid_partition(int partition) {
 
 	COUNT.null_partition++;
 	_PVB *ppvb = &PVB[partition];
-	int cluster = CLUSTER_FROM_LPN(ppvb->startLPN);
 
 	int block_num = 0;
 
@@ -119,9 +119,26 @@ void free_full_invalid_partition(int partition) {
 	unlink_partition_from_BIT(partition);
 
 	// remove partition link from associated cluster
-	remove_partition_from_cluster(partition, cluster, IO_WRITE);	
+	remove_partition_from_cluster(partition, IO_WRITE);	
 }
 
+void link_partition_to_BIT(int partition, int block) {
+
+	_BIT *pbit = &BIT[block];
+
+	if (list_empty(&free_r_plist)) {
+		// ERROR: there must be free entries
+		printf("ERR: free_r_plist is empty\n");
+		getchar();
+	}
+
+	_LIST_MAP *r_map = list_first_entry(&free_r_plist, _LIST_MAP, list);
+
+	list_del(&r_map->list);
+	list_add(&r_map->list, &pbit->linked_partition);
+
+	pbit->num_partition++;
+}
 
 void unlink_partition_from_BIT(int partition) {
 
@@ -133,6 +150,18 @@ void unlink_partition_from_BIT(int partition) {
 			continue;
 
 		_BIT *pbit = &BIT[ppvb->block[i]];
+
+		_LIST_MAP *plist = NULL;
+		
+		list_for_each_entry(_LIST_MAP, plist, &pbit->linked_partition, list) {
+
+			if (plist->value == partition) {
+				list_del(&plist->list);
+				list_add(&plist->list, &free_r_plist);
+				break;
+			}
+		}
+
 		pbit->num_partition--;
 	}
 }
@@ -391,19 +420,6 @@ void close_partition(int stream, int IO_type) {
 	psit->recentLPN = -1;
 }
 
-void unlink_page(int partition, int PPN, int flag) {
-
-	int cluster_num = PVB[partition].startLPN / PAGE_PER_CLUSTER;
-
-	// PVB
-	PVB[partition].valid--;
-	// Cluster
-	CLUSTER[cluster_num].valid--;
-
-	invalid_page_cluster(0, partition);
-
-}
-
 void put_block(int block, int flag) {
 
     _BIT *pbit = &BIT[block];
@@ -418,29 +434,24 @@ void put_block(int block, int flag) {
 	free_block++;
 }
 
-void invalid_block_in_partition(int victim_block) {
+void unlink_block_from_PVB(int block) {
 
-	int i,j;
-	//_partition_in_block *temp = BIT[victim_block].partition;
-	for (i = 0; i < BIT[victim_block].num_partition; i++) {
-		//if(BIT[vic])
-		//int partition = temp->partition_num;
-		int partition = BIT[victim_block].partition[i];
+	_BIT *pbit = &BIT[block];
+	_LIST_MAP *plist = NULL;
 
-		for (j = 0; j < PVB[partition].blocknum; j++) {
-			if (PVB[partition].block[j] == victim_block) {
-				PVB[partition].block[j] = PVB_BLOCK_RECLAIMED;
-			}
+	list_for_each_entry(_LIST_MAP, plist, &pbit->linked_partition, list) {
+
+		int partition = plist->value;
+
+		for (int i = 0; i < PVB[partition].blocknum; i++) {
+			if (PVB[partition].block[i] == block) 
+				PVB[partition].block[i] = PVB_BLOCK_RECLAIMED;
 		}
-		if (PVB[partition].valid == 0) {
-			free_full_invalid_partition(partition);
-		}
-
-		//temp = temp->next;
 	}
 }
 
 int select_victim_block() {
+
 	_BIT *pbit = NULL;
 
 	int victim_block, max_invalid = 0;
@@ -448,6 +459,7 @@ int select_victim_block() {
 	list_for_each_entry(_BIT, pbit, &allocated_block_pool, b_list) {
 		if (pbit->is_active)
 			continue;
+
 		if (pbit->invalid > max_invalid)
 			victim_block = pbit->block_num;
 	}
@@ -455,31 +467,66 @@ int select_victim_block() {
 	return victim_block;
 }
 
-int select_victim_cluster(int *predict) {
-	
-	int i;
-	// select victim cluster
-	for (i = 0; i < PAGE_PER_CLUSTER; i++) {
-		_cluster *temp_cluster = victim_cluster_pool[i];
-		if (temp_cluster != NULL) {
-			if (temp_cluster->cluster_num != -1 && CLUSTER[temp_cluster->cluster_num].victim_partition_num > PARTITION_PER_CLUSTER +1) {
-				// exist
-				//_cluster *temp_next = temp_cluster->next;
-				//_cluster *temp_prev = temp_cluster->prev;
+int select_victim_cluster() {
 
-				//temp_prev->next = temp_next;
-				//temp_next->prev = temp_prev;
+	int victim_cluster = -1;
+	int victim_mean_valid = PAGE_PER_PARTITION;
 
-				//victim_cluster_pool[i] = victim_cluster_pool[i]->next;
-				*predict = i;
-				return temp_cluster->cluster_num;
+	for (int i = 0; i < NUMBER_CLUSTER; i++) {
+
+		_CLUSTER *pcluster = &CLUSTER[i];
+
+		// at least 2 partitions are needed to handle partition GC
+		if (pcluster->num_partition < 2)
+			continue;
+
+		int mean_valid = pcluster->valid / pcluster->num_partition;
+
+		if (victim_mean_valid > mean_valid)
+			victim_cluster = pcluster->cluster_num;
+	}
+
+	if (victim_cluster == -1) {
+		printf("ERR: there are no available cluster for partition GC\n");
+		getchar();
+	}
+
+	return victim_cluster;
+}
+
+void select_victim_partition(int cluster, int *p_array) {
+
+	_CLUSTER *pcluster = &CLUSTER[cluster];
+	_PVB *ppvb = NULL;
+	int valid_array[MAX_NUM_PARTITION_PGC];
+
+	for (int i = 0; i < MAX_NUM_PARTITION_PGC; i++)
+		p_array[i] = -1;
+
+	// pick <MAX_NUM_PARTITION_PGC> partitions, which have minimum number of valid pages, from victim cluster
+	list_for_each_entry(_PVB, ppvb, &pcluster->p_list, p_list) {
+
+		// if there are enough partition to handle the pgc, then exclude the active partition
+		if (pcluster->num_partition > 2 && ppvb->active_flag)
+			continue;
+
+		for (int i = 0; i < MAX_NUM_PARTITION_PGC; i++) {
+
+			if (p_array[i] == -1) {
+				p_array[i] = ppvb->partition_num;
+				valid_array[i] = ppvb->valid;
+				break;
+			}
+
+			if (valid_array[i] > ppvb->valid) {
+
+				for (int j = MAX_NUM_PARTITION_PGC - 1; j == i; j--) {
+					p_array[j + 1] = p_array[j];
+					valid_array[j + 1] = valid_array[j];
+				}
+				p_array[i] = ppvb->partition_num;
+				valid_array[i] = ppvb->valid;
 			}
 		}
 	}
-
-	// not exist 
-	printf("victim not exist\n");
-	getchar();
-	return 0;
-
 }

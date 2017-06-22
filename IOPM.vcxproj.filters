@@ -15,9 +15,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="error.c">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
     <ClCompile Include="init.c">
       <Filter>소스 파일</Filter>
     </ClCompile>
@@ -33,11 +30,17 @@
     <ClCompile Include="random.c">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="nand.c">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="list.c">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="error.c">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="error.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
     <ClInclude Include="init.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
@@ -57,6 +60,9 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="nand.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="error.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>

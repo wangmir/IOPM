@@ -129,7 +129,7 @@ void IOPM_write(int LPN, int IO_type) {
 
 		psit->activePartition = partition;
 
-		BIT[block].num_partition++;
+		link_partition_to_BIT(partition, block);
 	}
 	else {
 		partition = psit->activePartition;
@@ -140,7 +140,7 @@ void IOPM_write(int LPN, int IO_type) {
 			ppvb->block[ppvb->blocknum] = block;
 			ppvb->blocknum++;
 
-			pbit->num_partition++;
+			link_partition_to_BIT(partition, block);
 		}
 	}
 
@@ -161,6 +161,10 @@ void IOPM_write(int LPN, int IO_type) {
 	if (overwrite_PPN != -1 && IO_type == IO_WRITE) {
 
 		COUNT.overwrite++;
+
+		pbit = &BIT[BLOCK_FROM_PPN(overwrite_PPN)];
+		ppvb = &PVB[overwrite_partition];
+
 		// error check
 		error_LPN_PPN(LPN, overwrite_PPN);
 
@@ -172,10 +176,13 @@ void IOPM_write(int LPN, int IO_type) {
             free_full_invalid_partition(overwrite_partition);
 
 		// BIT
-		if((++pbit->invalid) == PAGE_PER_BLOCK)
-            put_block(pbit->block_num, IO_type);
+		if ((++pbit->invalid) == PAGE_PER_BLOCK) {
+			unlink_block_from_PVB(pbit->block_num);
+			put_block(pbit->block_num, IO_type);
+			NAND_erase(pbit->block_num);
+		}
 
-		// invalid cluster
+		// if this is overwrite, then we don't need to increase valid count
 		pcluster->valid--;
 	}
 
@@ -215,216 +222,85 @@ void BlockGC() {
 	if (BIT[victim_block].invalid != PAGE_PER_BLOCK) {
 		// reorder the valid pages 
 		quickSort(GC_temp_LPN, GC_temp_PPN, 0, GC_temp_cnt - 1);
+
 		// write&remove the pages
 		for (int i = 0; i < GC_temp_cnt; i++) {
 			// write page
-			int partition = LPN2Partition(GC_temp_LPN[i], BGC);
-			assert(partition != -1);
 			IOPM_write(GC_temp_LPN[i], BGC);
-			unlink_page(partition, GC_temp_PPN[i], BGC);
 		}
 	}
-
-	/* invalid victim block in partition */
-	if(BIT[victim_block].num_partition != 0)
-		invalid_block_in_partition(victim_block);
-	
-
-	/* remove block from allocate to free list*/
-	put_block(victim_block);
-    NAND_erase(victim_block);
 }
 
-
+/*
+	Partition GC:
+*/
 void PartitionGC() {
 
 	/*******COUNTING******/
 	PARTITIONGC_count();
 	/*********************/
 
-	int predict_copy = -1;
-
-	/* Select the victim cluster */
-	int victim_cluster = select_victim_cluster(&predict_copy);
-
-	/* Get the victim partitions/pages from cluster */
-	int first_page = -1;
-	int last_page = -1;
-	int num_victim_partition = 0;
-	_partition *temp_victim_partition = CLUSTER[victim_cluster].victim_partition_list;
-	GC_temp_cnt = 0;
-	int copy_index = 0;
-
-	int free_partition_prev = free_partition;
-
-	//while (num_victim_partition < PARTITION_PER_CLUSTER + 2) {
-	while(1){
-
-		int victim_partition_num = temp_victim_partition->partition_num;
-
-		if (PVB[victim_partition_num].active_flag == 1) {
-			continue;
-		}
-		
-		if (num_victim_partition >= PARTITION_PER_CLUSTER + 2) {
-			if (GC_temp_cnt + PVB[victim_partition_num].valid > PAGE_PER_PARTITION / 4) {
-				break;
-			}
-		}
-
-
-		victim_partition[num_victim_partition] = victim_partition_num;
-		num_victim_partition++;
-		copy_index = GC_temp_cnt;
-
-		// one block in partition
-		if (PVB[victim_partition_num].blocknum == 1) {
-			int block = PVB[victim_partition_num].block[0];
-			if (block != PVB_BLOCK_RECLAIMED) {
-				int start_off = PVB[victim_partition_num].startPPN % PAGE_PER_BLOCK;
-				int end_off = PVB[victim_partition_num].endPPN % PAGE_PER_BLOCK;
-				int i;
-
-				for (i = start_off; i <= end_off; i++) {
-					if (PB[block].valid[i] == 1) {
-						GC_temp_LPN[GC_temp_cnt] = PB[block].PPN2LPN[i];
-						GC_temp_PPN[GC_temp_cnt] = block*PAGE_PER_BLOCK + i;
-						GC_temp_cnt++;
-						PARTITIONGC_READ_count();
-					}
-				}
-			}
-		}
-		else {
-			int block = PVB[victim_partition_num].block[0];
-			int start_off = PVB[victim_partition_num].startPPN % PAGE_PER_BLOCK;
-			int end_off = PVB[victim_partition_num].endPPN % PAGE_PER_BLOCK;
-			int i;
-			if (block != PVB_BLOCK_RECLAIMED) {
-
-				// first block
-				for (i = start_off; i < PAGE_PER_BLOCK; i++) {
-					if (PB[block].valid[i] == 1) {
-						GC_temp_LPN[GC_temp_cnt] = PB[block].PPN2LPN[i];
-						GC_temp_PPN[GC_temp_cnt] = block*PAGE_PER_BLOCK + i;
-						GC_temp_cnt++;
-						PARTITIONGC_READ_count();
-					}
-				}
-			}
-			
-			// middle
-			int j;
-			for (j = 1; j < PVB[victim_partition_num].blocknum - 1; j++) {
-				block = PVB[victim_partition_num].block[j];
-				if (block != PVB_BLOCK_RECLAIMED) {
-					for (i = 0; i < PAGE_PER_BLOCK; i++) {
-						if (PB[block].valid[i] == 1) {
-							GC_temp_LPN[GC_temp_cnt] = PB[block].PPN2LPN[i];
-							GC_temp_PPN[GC_temp_cnt] = block*PAGE_PER_BLOCK + i;
-							GC_temp_cnt++;
-							PARTITIONGC_READ_count();
-						}
-					}
-				}
-			}
-			
-			// last block
-			block = PVB[victim_partition_num].block[PVB[victim_partition_num].blocknum-1];
-			if (block != PVB_BLOCK_RECLAIMED) {
-				for (i = 0; i <= end_off; i++) {
-					if (PB[block].valid[i] == 1) {
-						GC_temp_LPN[GC_temp_cnt] = PB[block].PPN2LPN[i];
-						GC_temp_PPN[GC_temp_cnt] = block*PAGE_PER_BLOCK + i;
-						GC_temp_cnt++;
-						PARTITIONGC_READ_count();
-
-					}
-				}
-			}
-		}
-
-		// Get the first page and last page
-		int temp_first = GC_temp_LPN[copy_index];
-		int temp_last = GC_temp_LPN[GC_temp_cnt-1];
-
-		if (first_page == -1) {
-			first_page = temp_first;
-		}
-		else {
-			if (temp_first < first_page) {
-				first_page = temp_first;
-			}
-		}
-
-		if (last_page == -1) {
-			last_page = temp_last;
-		}
-		else {
-			if (last_page < temp_last) {
-				last_page = temp_last;
-			}
-		}
-
-		//first_page = (temp_first < first_page) ? temp_first : first_page;
-		//last_page = (temp_last < last_page) ? temp_last : last_page;
-		int need_partition;
-		if ((last_page - first_page + 1) % PAGE_PER_PARTITION == 0) {
-			need_partition = (last_page - first_page + 1) / PAGE_PER_PARTITION;
-		}
-		else {
-			need_partition = (last_page - first_page + 1) / PAGE_PER_PARTITION + 1;
-		}
-		if (need_partition < num_victim_partition) {
-			break;
-		}
-
-		temp_victim_partition = temp_victim_partition->next;		
-	}
+	int victim_cluster = select_victim_cluster();
+	int copied_page = 0;
+	int iter;
 	
-	assert(GC_temp_cnt <= predict_copy);
+	_CLUSTER *pcluster = &CLUSTER[victim_cluster];
 
+	// page information for new partition
+	int first_page = -1;
+
+	int victim_partition[MAX_NUM_PARTITION_PGC];
+
+	GC_temp_cnt = 0;
+
+	select_victim_partition(victim_cluster, victim_partition);
+
+	for (iter = 0;; iter++) {
+
+		int partition = victim_partition[iter];
+		_PVB *ppvb = &PVB[partition];
+
+		if (iter >= 2 && (copied_page + ppvb->valid) > PGC_COPY_THRESHOLD)
+			break;
+
+		if (partition == -1)
+			break;
+
+		int start_offset, end_offset;
+
+		for (int i = 0; i < ppvb->blocknum; i++) {
+
+			int block = ppvb->block[i];
+
+			if (block == PVB_BLOCK_RECLAIMED)
+				break;
+
+			start_offset = 0;
+			end_offset = PAGE_PER_BLOCK - 1;
+			if (i == 0)
+				start_offset = OFFSET_FROM_PPN(ppvb->startPPN);
+			if (i == (ppvb->blocknum - 1))
+				end_offset = OFFSET_FROM_PPN(ppvb->endPPN);
+
+			for (int j = start_offset; j <= end_offset; j++) {
+
+				if (NAND_is_valid(block, j)) {
+					PARTITIONGC_READ_count();
+					GC_temp_LPN[GC_temp_cnt] = NAND_read(block, j);
+					GC_temp_PPN[GC_temp_cnt] = PPN_FROM_PBN_N_OFFSET(block, j);
+					GC_temp_cnt++;
+				}
+			}
+		}
+	}
 
 	/* Write the copy pages */
 	quickSort(GC_temp_LPN, GC_temp_PPN, 0, GC_temp_cnt - 1);
 	//victim_cluster_pool_cluster(victim_cluster);
 
-	int i;
-	for (i = 0; i < GC_temp_cnt; i++) {
+	for (int i = 0; i < GC_temp_cnt; i++) {
 		IOPM_write(GC_temp_LPN[i], PGC);
-
-		// Invalid the page
-		PB[GC_temp_PPN[i] / PAGE_PER_BLOCK].PPN2LPN[GC_temp_PPN[i] % PAGE_PER_BLOCK] = -1;
-		PB[GC_temp_PPN[i] / PAGE_PER_BLOCK].valid[GC_temp_PPN[i] % PAGE_PER_BLOCK] = 0;
-
 	}
-
-	/* Remove the partition information */
-	for (i = 0; i < num_victim_partition; i++) {
-		int temp_victim_partition = victim_partition[i];
-		//PVB[temp_victim_partition].valid--;
-		int block_num = 0;
-
-		// remove partition in block
-		for (int j = 0; j < PVB[temp_victim_partition].blocknum; j++) {
-			if (PVB[temp_victim_partition].block[j] != PVB_BLOCK_RECLAIMED) {
-				remove_block_in_partition[block_num] = PVB[temp_victim_partition].block[j];
-				block_num++;
-			}
-		}
-		// remove blocks in partition (PVB)
-		unlink_partition_from_BIT(temp_victim_partition, remove_block_in_partition, block_num);
-
-		// cluster 재조정
-		remove_partition_from_cluster(temp_victim_partition, victim_cluster, PGC);
-
-		// init PVB
-		init_Partition(temp_victim_partition);
-		free_partition++;
-	
-	}
-	//victim_partition_flag_check(victim_cluster);
-	assert(free_partition_prev < free_partition);
 }
 
 

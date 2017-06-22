@@ -392,8 +392,8 @@ void command_setting(int argc, char *argv[]) {
 	//OVERPROVISION = 1*GB;
 	//5047296
 
-	PARTITION_LIMIT = 100;
-	BLOCK_LIMIT = 50;
+	PARTITION_LIMIT = 20;
+	BLOCK_LIMIT = 20;
 
 	//def
 	RANDOM_RATE = 0.3;

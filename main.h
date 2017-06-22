@@ -1,14 +1,21 @@
 #ifndef _MAIN_H
 #define _MAIN_H
 
-#pragma warning(disable:4996)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <assert.h>
 
 #include "nand.h"
+
+#define BLOCK_FROM_PPN(PPN) ((PPN) / PAGE_PER_BLOCK)
+#define OFFSET_FROM_PPN(PPN) ((PPN) % PAGE_PER_BLOCK)
+#define PPN_FROM_PBN_N_OFFSET(PBN, offset) (offset + (PBN * PAGE_PER_BLOCK))
+
+#define IS_BLOCK_FULL(PPN) ((PPN + 1) % PAGE_PER_BLOCK == 0)	// also if 0 when the block is not allocated (-1)
+
 
 // Storage
 long long int KB;

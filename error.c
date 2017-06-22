@@ -3,6 +3,11 @@
 #include "main.h"
 #include "init.h"
 
+void error_LPN_PPN(int LPN, int PPN) {
+
+	assert(PB[PPN / PAGE_PER_BLOCK].PPN2LPN[PPN % PAGE_PER_BLOCK] == LPN);
+}
+
 #if 0
 
 void error_victim_partition_flag(int cluster) {
