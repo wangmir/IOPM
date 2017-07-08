@@ -24,17 +24,21 @@ int allocate_partition(int flag);
 void insert_partition_into_cluster(int cluster, int partition);
 void swap(int* a, int* b);
 
+int LPN2PPN(int LPN, int *partition, int IO_type);
+
 int LPN2Partition(int LPN, int read);
 int Partition2PPN(int LPN, int partition, int read);
 int physical_offset(int partition, int log_offset, int read);
 int logical_offset(int partition, int LP, int read);
 void two_bitmap(unsigned int n);
 void quickSort(int arr[], int b[], int left, int right);
-void close_partition(int stream, int IO_type);
+void close_stream(int stream, int IO_type);
+void close_partition(int partition);
 
 void put_block(int victim_block, int flag);
 void unlink_block_from_PVB(int victim_block);
 
+void insert_cluster_to_victim_list(int cluster);
 int select_victim_block();
 int select_victim_cluster();
 void select_victim_partition(int cluster, int *p_array);

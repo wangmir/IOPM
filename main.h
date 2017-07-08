@@ -91,7 +91,7 @@ int AGING_IO;
 
 int break_GC;
 int close_blockGC;
-int close_partitionGC;
+int close_streamGC;
 
 int MTB;
 
@@ -99,28 +99,76 @@ int MTB;
 *	Structures
 */
 
-// count information
-typedef struct _GC {
-	int gc_read;
-	int gc_write;
-	int gc;				// gc È£Ãâ È½¼ö
-	int mem;
-}_GC;
+typedef struct _NAND_CNT {
 
-// count structure
-typedef struct _COUNT {
 	int read;
 	int write;
-	struct _GC partition;
-	struct _GC block;
-	long long int IO_mem;
-	int IO_mem_M;
-	int null_partition;
-	int overwrite;
-	//int nand;
-}_COUNT;
+	int erase;
 
-_COUNT COUNT;
+}_NAND_CNT;
+
+typedef struct _IO_CNT {
+
+	_NAND_CNT nand;
+	int null_read;
+	int overwrite;
+	int write_req;
+	int read_req;
+
+}_IO_CNT;
+
+typedef struct _PGC_CNT {
+
+	_NAND_CNT nand;
+	int pgc_cnt;
+	int num_victim_partition;
+	int partition_free_cnt;
+
+}_PGC_CNT;
+
+typedef struct _BGC_CNT {
+
+	_NAND_CNT nand;
+	int bgc_cnt;
+
+}_BGC_CNT;
+
+typedef struct _STAT {
+
+	_NAND_CNT nand;
+	_IO_CNT io;
+	_PGC_CNT pgc;
+	_BGC_CNT bgc;
+
+}_STAT;
+
+enum {
+	
+	prof_NAND_write = 0,
+	prof_NAND_read,
+	prof_NAND_erase,
+
+	prof_IO_write,
+	prof_IO_read,
+	prof_IO_overwrite,
+	prof_IO_nullread,
+	prof_IO_write_req,
+	prof_IO_read_req,
+
+	prof_BGC_write,
+	prof_BGC_read,
+	prof_BGC_erase,
+	prof_BGC_cnt,
+
+	prof_PGC_write,
+	prof_PGC_read,
+	prof_PGC_erase,
+	prof_PGC_free,
+	prof_PGC_cnt,
+	prof_PGC_victim
+};
+
+_STAT stat;
 
 char * INPUT_FILENAME;
 
@@ -131,18 +179,7 @@ void command_setting(int argc, char *argv[]);
 int parsing_size(char * str);
 void print_count(char * file, int trace_total_write);
 void count_init();
-void READ_count();
-void WRITE_count(int flag);
-void PARTITIONGC_count();
-void BLOCKGC_count();
-void PARTITIONGC_READ_count();
-void PARTITIONGC_WRITE_count();
-void BLOCKGC_READ_count();
-void BLOCKGC_WRITE_count();
-//void MEM_count();
-//void PARTITIONGC_MEM_count();
-//void BLOCKGC_MEM_count();
-void MEM_COUNT_IO(int host);
-//void MEM_COUNT_IO(int MEM_HOST);
+void do_count(int flag, int cnt);
+int get_count(int flag);
 
 #endif

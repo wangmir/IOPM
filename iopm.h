@@ -3,8 +3,13 @@
 
 #include "list.h"
 
-#define IO_WRITE 0
-#define IO_READ 1
+// IOPM OPTION
+#define PGC_INCLUDE_ACTIVE_AS_VICTIM 1
+
+#define SORTED_CLUSTER_LIST 1
+//
+
+#define IO 0
 #define PGC 2
 #define BGC 3
 
@@ -47,6 +52,10 @@ typedef struct _CLUSTER {
 	int valid;						// # of valid page in cluster
 	int num_partition;				// # of partition in cluster
 
+	// for PGC
+	int inactive_valid;
+	int inactive_partition;
+
 	int cluster_num;
 
 	struct list_head p_list;		// partition list head to queue allocated partition
@@ -55,6 +64,8 @@ typedef struct _CLUSTER {
 }_CLUSTER;
 
 _CLUSTER *CLUSTER;
+
+struct list_head victim_cluster_list;
 
 /* SIT : Stream Information Table. */
 typedef struct _SIT {
@@ -98,6 +109,8 @@ _LIST_MAP *r_plist;		// reverse partition list for _BIT,
 
 struct list_head free_r_plist;
 
+int num_allocated_r_plist;
+
 int free_partition;
 int free_block;
 int current_order;
@@ -115,7 +128,7 @@ int * victim_partition;
 
 // function
 void read(int start_LPN, int count);
-void IOPM_read(int LPN);
+int IOPM_read(int LPN, int flag);
 void write(int start_LPN, int count);
 void IOPM_write(int LPN, int flag);
 void BlockGC();

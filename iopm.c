@@ -7,37 +7,44 @@
 /* read pages started with 'start_LPN' */
 void read(int start_LPN, int count) {
 	int i;
-	for (i = 0; i<count; i++) {
-		IOPM_read(start_LPN + i);
-	}
+
+	do_count(prof_IO_read_req, 1);
+
+	for (i = 0; i<count; i++) 
+		IOPM_read(start_LPN + i, IO);
 }
 
 /* read LPN */
-void IOPM_read(int LPN) {
+int IOPM_read(int LPN, int IO_type) {
 	/* count the read operation */
-	READ_count();			
-	
-	int partition = LPN2Partition(LPN, IO_READ);
-	int PPN;
 
-	if (partition == -1) {
-		// NULL read
-	}
-	else {
-		// calculate the physical address
-		PPN = Partition2PPN(LPN, partition, IO_READ);
+	int partition, PPN;
 
-		//error check : LPN match with PPN?
-		error_LPN_PPN(LPN, PPN);
-	}	
+	/****** COUNTING ******/
+	if (IO_type == IO)
+		do_count(prof_IO_read, 1);
+	else if (IO_type == PGC)
+		do_count(prof_PGC_read, 1);
+	else
+		do_count(prof_BGC_read, 1);
+	/*********************/
+
+	PPN = LPN2PPN(LPN, &partition, IO);
+
+	if (PPN == -1)
+		do_count(prof_IO_nullread, 1);
+
+	return PPN;
 }
 
 /* write 'count' pages started with 'start_LPN' */
 void write(int start_LPN, int count) {
 	int i;
-	for (i = 0; i<count; i++) {
+
+	do_count(prof_IO_write_req, 1);
+
+	for (i = 0; i<count; i++) 
 		IOPM_write(start_LPN + i, 0);
-	}
 }
 
 /* write LPN 
@@ -49,7 +56,12 @@ void write(int start_LPN, int count) {
 void IOPM_write(int LPN, int IO_type) {
 
 	/****** COUNTING ******/
-	WRITE_count(IO_type);
+	if (IO_type == IO)
+		do_count(prof_IO_write, 1);
+	else if (IO_type == PGC)
+		do_count(prof_PGC_write, 1);
+	else
+		do_count(prof_BGC_write, 1);
 	/*********************/
 
 	int overwrite_partition = -1;
@@ -63,19 +75,17 @@ void IOPM_write(int LPN, int IO_type) {
 
 	int cluster = CLUSTER_FROM_LPN(LPN);
 	_CLUSTER *pcluster = &CLUSTER[cluster];
+
+	// checking cluster's pre valid, num partition
+	int pre_valid = pcluster->valid;
+	int pre_num_partition = pcluster->num_partition;
 	
 	// Select the Stream
 	int stream = select_stream(LPN, IO_type);
 	_SIT *psit = &SIT[stream];
 
 	// Check Overwrite
-	if (IO_type == IO_WRITE) {
-		overwrite_partition = LPN2Partition(LPN, IO_type);
-		if (overwrite_partition != -1) {
-			//partition_valid_check(overwrite_partition);
-			overwrite_PPN = Partition2PPN(LPN, overwrite_partition, IO_type);		
-		}
-	}
+	overwrite_PPN = LPN2PPN(LPN, &overwrite_partition, IO_type);
 
 	int new_block_flag = 0;
 
@@ -108,13 +118,15 @@ void IOPM_write(int LPN, int IO_type) {
 	}
 
 	// 2. do we need to allocate a new partition?
-	if (psit->recentLPN == -1 || LPN <= psit->recentLPN) {
+	if (psit->recentLPN == -1 || LPN <= psit->recentLPN 
+		|| CLUSTER_FROM_LPN(LPN) != CLUSTER_FROM_LPN(psit->recentLPN)) {
 
 		// close previous partition if exist
 		if (psit->activePartition != -1)
-			close_partition(stream, IO_type);
+			close_stream(stream, IO_type);
 
 		partition = allocate_partition(IO_type);
+
 		ppvb = &PVB[partition];
 
 		ppvb->block[ppvb->blocknum] = block;
@@ -153,20 +165,22 @@ void IOPM_write(int LPN, int IO_type) {
 	// Set PVB
 	insert_bitmap(partition, LPN - ppvb->startLPN);
 	ppvb->valid++;
+	ppvb->endPPN = psit->recentPPN; //temporal endPPN, will be changed if the partition is not closed 
 
 	// Set CLUSTER
 	pcluster->valid++;
 
 	// invalid old data
-	if (overwrite_PPN != -1 && IO_type == IO_WRITE) {
+	if (overwrite_PPN != -1) {
 
-		COUNT.overwrite++;
+		if(IO_type == IO)
+			do_count(prof_IO_overwrite, 1);
 
 		pbit = &BIT[BLOCK_FROM_PPN(overwrite_PPN)];
 		ppvb = &PVB[overwrite_partition];
 
 		// error check
-		error_LPN_PPN(LPN, overwrite_PPN);
+		check_OOB_MAP(LPN, overwrite_PPN);
 
 		// unset page valid bit
 		NAND_invalidate(overwrite_PPN);
@@ -180,21 +194,39 @@ void IOPM_write(int LPN, int IO_type) {
 			unlink_block_from_PVB(pbit->block_num);
 			put_block(pbit->block_num, IO_type);
 			NAND_erase(pbit->block_num);
+
+			if (IO_type == PGC)
+				do_count(prof_PGC_erase, 1);
+			else if (IO_type == BGC)
+				do_count(prof_BGC_erase, 1);
 		}
 
 		// if this is overwrite, then we don't need to increase valid count
 		pcluster->valid--;
+
+		if (!ppvb->active_flag)
+			pcluster->inactive_valid--;
 	}
+
+	// test 
+	check_LPN_MAP(LPN, psit->recentPPN);
+	check_OOB_MAP(LPN, psit->recentPPN);
+
+#if SORTED_CLUSTER_LIST
+
+	if(pre_num_partition && ((pre_valid / pre_num_partition) != (pcluster->valid / pcluster->num_partition)))
+		insert_cluster_to_victim_list(cluster);
+#endif
 
 	// do partition gc
 	do_gc_if_needed(IO_type);
-	//SIT_debug();
+
 }
 
 void BlockGC() {
 	
 	/*******COUNTING******/
-	BLOCKGC_count();
+	do_count(prof_BGC_cnt, 1);
 	/*********************/
 
 	int victim_block = 0;
@@ -210,7 +242,9 @@ void BlockGC() {
 	if (pbit->invalid != PAGE_PER_BLOCK) {
 		for (int i = 0; i < PAGE_PER_BLOCK; i++) {
 			if (NAND_is_valid(victim_block, i)) {
-				BLOCKGC_READ_count();
+				
+				do_count(prof_BGC_read, 1);
+
 				GC_temp_LPN[GC_temp_cnt] = NAND_read(victim_block, i);
 				GC_temp_PPN[GC_temp_cnt] = PPN_FROM_PBN_N_OFFSET(victim_block, i);
 				GC_temp_cnt++;
@@ -237,7 +271,7 @@ void BlockGC() {
 void PartitionGC() {
 
 	/*******COUNTING******/
-	PARTITIONGC_count();
+	do_count(prof_PGC_cnt, 1);
 	/*********************/
 
 	int victim_cluster = select_victim_cluster();
@@ -255,7 +289,12 @@ void PartitionGC() {
 
 	select_victim_partition(victim_cluster, victim_partition);
 
-	for (iter = 0;; iter++) {
+	if (victim_partition[1] == -1) { // might cuz of active partition 
+		printf("ERROR:: there are not enough partitions to GC\n");
+		getchar();
+	}
+
+	for (iter = 0; iter < MAX_NUM_PARTITION_PGC; iter++) {
 
 		int partition = victim_partition[iter];
 		_PVB *ppvb = &PVB[partition];
@@ -266,6 +305,14 @@ void PartitionGC() {
 		if (partition == -1)
 			break;
 
+		// actually, if we target the active partition, we need to close the partition first
+		if (ppvb->active_flag) {
+			printf("handle this issue first\n");
+			getchar();
+		}
+
+		do_count(prof_PGC_victim, 1);
+
 		int start_offset, end_offset;
 
 		for (int i = 0; i < ppvb->blocknum; i++) {
@@ -273,7 +320,7 @@ void PartitionGC() {
 			int block = ppvb->block[i];
 
 			if (block == PVB_BLOCK_RECLAIMED)
-				break;
+				continue;
 
 			start_offset = 0;
 			end_offset = PAGE_PER_BLOCK - 1;
@@ -285,7 +332,9 @@ void PartitionGC() {
 			for (int j = start_offset; j <= end_offset; j++) {
 
 				if (NAND_is_valid(block, j)) {
-					PARTITIONGC_READ_count();
+					
+					do_count(prof_PGC_read, 1);
+
 					GC_temp_LPN[GC_temp_cnt] = NAND_read(block, j);
 					GC_temp_PPN[GC_temp_cnt] = PPN_FROM_PBN_N_OFFSET(block, j);
 					GC_temp_cnt++;

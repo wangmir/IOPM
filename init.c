@@ -23,20 +23,8 @@ void init() {
 }
 
 void init_COUNT() {
-	COUNT.read = 0;
-	COUNT.write = 0;
-	COUNT.IO_mem = 0;
-	COUNT.IO_mem_M = 0;
-	COUNT.partition.gc = 0;
-	COUNT.partition.gc_read = 0;
-	COUNT.partition.gc_write = 0;
-	COUNT.partition.mem = 0;
-	COUNT.block.gc = 0;
-	COUNT.block.gc_read = 0;
-	COUNT.block.gc_write = 0;
-	COUNT.block.mem = 0;
-	COUNT.null_partition = 0;
-	COUNT.overwrite = 0;
+	
+	memset(&stat, 0x00, sizeof(_STAT));
 }
 
 void init_PVB() {
@@ -95,8 +83,10 @@ void init_BIT() {
 
 	// block needs to map linked partition to handle block GC 
 	// at block GC, linked partition for the victim block should delete the block map at the PVB
-	int num_r_plist = NUMBER_PARTITION * (BLOCK_PER_PARTITION + 1);
+	int num_r_plist = 2 * NUMBER_PARTITION * (BLOCK_PER_PARTITION + 1);
 	r_plist = (_LIST_MAP *)malloc(sizeof(_LIST_MAP) * num_r_plist);
+
+	num_allocated_r_plist = 0;
 
 	for (int i = 0; i < num_r_plist; i++) {
 		r_plist[i].value = -1;
@@ -135,6 +125,8 @@ void init_CLUSTER() {
 
 		CLUSTER[i].cluster_num = i;
 	}
+
+	INIT_LIST_HEAD(&victim_cluster_list);
 }
 
 void init_Partition(int partition) {
@@ -149,8 +141,6 @@ void init_Partition(int partition) {
 	PVB[partition].active_flag = 0;
 	PVB[partition].free_flag = 1;
 	PVB[partition].victim_partition_flag = 0;
-	
-	INIT_LIST_HEAD(&PVB[partition].p_list);
 
 	// start/end를 제외한 가운데 block
 	for (int i = 0; i < BLOCK_PER_PARTITION + 1; i++) {

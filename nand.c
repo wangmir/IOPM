@@ -28,6 +28,8 @@ void NAND_write(int PPN, int LPN) {
 
 	PB[block].valid[offset] = 1;
 	PB[block].PPN2LPN[offset] = LPN;
+
+	do_count(prof_NAND_write, 1);
 }
 
 void NAND_invalidate(int PPN) {
@@ -36,6 +38,8 @@ void NAND_invalidate(int PPN) {
 }
 
 int NAND_read(int PBN, int offset) {
+
+	do_count(prof_NAND_read, 1);
 
 	return PB[PBN].PPN2LPN[offset];
 }
@@ -51,4 +55,6 @@ void NAND_erase(int block) {
 		PB[block].PPN2LPN[i] = -1;
 		PB[block].valid[i] = -1;
 	}
+
+	do_count(prof_NAND_erase, 1);
 }

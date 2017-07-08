@@ -2,6 +2,7 @@
 #include "iopm.h"
 #include "init.h"
 #include "random.h"
+#include "error.h"
 
 int main(int argc, char *argv[]) {
 
@@ -26,7 +27,7 @@ int main(int argc, char *argv[]) {
 	init();
 	AGING_IO = 0;
 	break_GC = 0;
-	close_partitionGC = 0;
+	close_streamGC = 0;
 	close_blockGC = 0;
 
 	/* Aging */
@@ -34,12 +35,18 @@ int main(int argc, char *argv[]) {
 		// seq
 		printf("[main] SEQ WRITE\n");
 		for (i = 0; i < LOGICAL_FLASH_SIZE / PAGE_SIZE * SEQ_RATE; i++) {
+
 			write(i, 1);
-			AGING_IO++;
-			if (AGING_IO % 10000 == 1)
+			AGING_IO++; 
+
+			if (AGING_IO % 10000 == 1) {
 				printf("-");
+			}
 		}
 		
+		// debug
+		check_validity();
+
 		printf("\n[main] RAND WRITE\n");
 		RandomInit(1);
 		i = 0;
@@ -70,6 +77,7 @@ int main(int argc, char *argv[]) {
 			}
 			else {
 				while (i <= (int)(LOGICAL_FLASH_SIZE / PAGE_SIZE * RANDOM_MOUNT)) {
+
 					int page = IRandom(last_page, (int)(LOGICAL_FLASH_SIZE / PAGE_SIZE * RANDOM_RATE));
 					write(page, RANDOM_SIZE);
 					last_page = page;
@@ -78,6 +86,7 @@ int main(int argc, char *argv[]) {
 					}
 					i = i + RANDOM_SIZE;
 					AGING_IO = AGING_IO + RANDOM_SIZE;
+
 					if (j_c % 10000 == 0) {
 						printf("-");
 					}
@@ -167,7 +176,7 @@ int main(int argc, char *argv[]) {
 	count_init();
 	break_GC = 0;
 	close_blockGC = 0;
-	close_partitionGC = 0;
+	close_streamGC = 0;
 	i = 0;
 	while (!feof(fp)) {
 		trace_total_write++;
@@ -375,7 +384,7 @@ void command_setting(int argc, char *argv[]) {
 
 	PARTITION_SIZE = 256 * KB, CLUSTER_SIZE = 256 * KB, NUMBER_PARTITION = 256 * K;
 	// stream
-	NUMBER_STREAM = 256;
+	NUMBER_STREAM = 32;
 
 	// cluster
 	//CLUSTER_SIZE = 2 * MB;
@@ -533,7 +542,7 @@ void command_setting(int argc, char *argv[]) {
 	
 
 	// DEBUG
-	/*printf("[DEBUG] NUMBER_PARTITION : %d K\n", NUMBER_PARTITION/K);
+	printf("[DEBUG] NUMBER_PARTITION : %d K\n", NUMBER_PARTITION/K);
 	printf("[DEBUG] PARTITION_SIZE : %d KB\n", PARTITION_SIZE/KB);
 	printf("[DEBUG] NUMBER_STREAM : %d\n", NUMBER_STREAM);
 	printf("[DEBUG] SECTOR_SIZE : %d Byte\n", SECTOR_SIZE);
@@ -551,7 +560,7 @@ void command_setting(int argc, char *argv[]) {
 	printf("[DEBUG] RANDOM RATE : %f\n", RANDOM_RATE);
 	printf("[DEBUG] RANDOM MOUNT : %f\n", RANDOM_MOUNT);
 	printf("[DEBUG] RANDOM_INCREASE : %d\n", RANDOM_INCREASE);
-	printf("[DEBUG] RANDOM_SIZE : %d\n", RANDOM_SIZE);*/
+	printf("[DEBUG] RANDOM_SIZE : %d\n", RANDOM_SIZE);
 
 	NAND_init();
 }
@@ -574,16 +583,10 @@ int parsing_size(char * str) {
 
 void count_init() {
 	// init count information
-	COUNT.read = 0;
-	COUNT.write = 0;
-	COUNT.partition.gc = 0;
-	COUNT.partition.gc_read = 0;
-	COUNT.partition.gc_write = 0;
-	COUNT.block.gc = 0;
-	COUNT.block.gc_read = 0;
-	COUNT.null_partition = 0;
-	COUNT.block.gc_write = 0;
+	memset(&stat, 0x00, sizeof(_STAT));
 }
+
+
 
 #if 0
 void print_count(char * file, int trace_total_write) {
@@ -714,7 +717,7 @@ void print_count(char * file, int trace_total_write) {
 	fprintf(fp, "%d, ", COUNT.partition.gc);
 	fprintf(fp, "%d, ", COUNT.null_partition);
 	fprintf(fp, "%d, ", break_GC);
-	fprintf(fp, "%d, ", close_partitionGC);
+	fprintf(fp, "%d, ", close_streamGC);
 	fprintf(fp, "%d, ", close_blockGC);
 
 }
@@ -723,16 +726,8 @@ void print_count(char * file, int trace_total_write) {
 	printf("printf_count\n");
 	FILE *fp;
 	char file_name[1024];
-	char *tok;
 	char * extension = ".txt";
 	char * underbar = "_result";
-
-
-
-	/*strcpy_s(file_name, sizeof(file_name), file);
-	strtok_s(file_name, ".", &tok);
-	strcat_s(file_name, sizeof(file_name), underbar);
-	strcat_s(file_name, 1024, extension);*/
 
 	strcpy(file_name,  file);
 	strtok(file_name, ".");
@@ -746,7 +741,28 @@ void print_count(char * file, int trace_total_write) {
 	if (fp == NULL) {
 		fp = fopen(file_name, "a+");
 		//fopen_s(&fp, file_name, "a+");
-		fprintf(fp, "Aging, NUM_STREAM, PA_Size, Cluster_Size, PA#, MAP_SIZE, WRITE, READ, ERASE, IO_WRITE, IO_READ, B.GC.write, B.GC.read, B.GC.erase, P.GC.write, P.GC.read, P.GC, P.nullGC, MEM_IO, MEM_B, MEM_P\n");
+		fprintf(fp, "Aging, NUM_STREAM, PA_Size, Cluster_Size, PA#, MAP_SIZE, ");
+		fprintf(fp, "NAND_WRITE, ");
+		fprintf(fp, "NAND_READ, ");
+		fprintf(fp, "NAND_ERASE, ");
+
+		fprintf(fp, "IO_WRITE, ");
+		fprintf(fp, "IO_READ, ");
+		fprintf(fp, "IO_OVERWRITE, ");
+		fprintf(fp, "IO_NULLREAD, ");
+		fprintf(fp, "IO_WRITE_REQ, ");
+		fprintf(fp, "IO_READ_REQ, ");
+
+		fprintf(fp, "BGC_WRITE, ");
+		fprintf(fp, "BGC_READ, ");
+		fprintf(fp, "BGC_ERASE, ");
+		fprintf(fp, "BGC_CNT, ");
+
+		fprintf(fp, "PGC_WRITE, ");
+		fprintf(fp, "PGC_READ, ");
+		fprintf(fp, "PGC_ERASE, ");
+		fprintf(fp, "PGC_CNT, ");
+		fprintf(fp, "PGC_VICTIM\n");
 	}
 	else {
 		fclose(fp);
@@ -754,94 +770,6 @@ void print_count(char * file, int trace_total_write) {
 		//fopen_s(&fp, file_name, "a+");
 	}
 
-
-	/*fprintf(fp, "NUMBER_PARTITION : %d K\n", NUMBER_PARTITION / K);
-	fprintf(fp, "PARTITION_SIZE : %d MB\n", PARTITION_SIZE / MB);
-	fprintf(fp, "NUMBER_STREAM : %d\n", NUMBER_STREAM);
-	fprintf(fp, "SECTOR_SIZE : %d Byte\n", SECTOR_SIZE);
-	fprintf(fp, "PAGE_SIZE : %d KB\n", PAGE_SIZE / KB);
-	fprintf(fp, "BLOCK_SIZE : %d KB\n", BLOCK_SIZE / KB);
-	fprintf(fp, "LOGICAL_FLASH_SIZE : %d GB\n", LOGICAL_FLASH_SIZE / GB);
-	fprintf(fp, "OVERPROVISION : %f\n", OVERPROVISION);
-	fprintf(fp, "FLASH_SIZE : %d GB\n", FLASH_SIZE / GB);
-	fprintf(fp, "FREE_BLOCK : %d\n", FREE_BLOCK);
-	fprintf(fp, "PAGE_PER_BLOCK : %d\n", PAGE_PER_BLOCK);
-	fprintf(fp, "CLUSTER_SIZE : %d MB\n", CLUSTER_SIZE / MB);
-	fprintf(fp, "NUMBER_CLUSTER : %d\n", NUMBER_CLUSTER);
-	fprintf(fp, "PARTITION_CLUSTER : %d\n\n", PARTITION_PER_CLUSTER);
-	fprintf(fp, "STREAM : %d\n\n", NUMBER_STREAM);
-	fprintf(fp, "[DEBUG] SEQ RATE: %f\n", SEQ_RATE);
-	fprintf(fp, "[DEBUG] RANDOM RATE : %f\n", RANDOM_RATE);
-	fprintf(fp, "[DEBUG] RANDOM MOUNT : %f\n", RANDOM_MOUNT);
-	fprintf(fp, "[DEBUG] RANDOM_INCREASE : %d\n", RANDOM_INCREASE);
-	fprintf(fp, "[DEBUG] RANDOM_SIZE : %d\n", RANDOM_SIZE);*/
-
-
-	/**/
-	/*int bit;
-	if (PAGE_PER_PARTITION % 8 != 0) {
-		bit = PAGE_PER_PARTITION / 8 + 1;
-	}
-	else {
-		bit = PAGE_PER_PARTITION / 8;
-	}
-	// Bitmap
-	
-	int startLPN = 4;
-	int startPPN = 4;
-	int endPPN = 4;
-	
-	// valid page
-	double valid_d = log(PAGE_PER_PARTITION) / log(2);
-	int valid = ceil(valid_d);
-
-	if (valid % 8 != 0) {
-		valid = valid / 8 + 1;
-	}
-	else {
-		valid = valid / 8;
-	}
-	*/
-	// block validation
-	/*int blockvalidation;
-	int BLOCK_PER_PARTITION = PARTITION_SIZE / BLOCK_SIZE;
-	if ((BLOCK_PER_PARTITION + 1) % 8 != 0) {
-		blockvalidation = (BLOCK_PER_PARTITION + 1) / 8 + 1;
-	}
-	else {
-		blockvalidation = (BLOCK_PER_PARTITION + 1) / 8;
-	}
-	// blocks in partition
-	int blockorder = (BLOCK_PER_PARTITION - 1) * 4;
-
-	if (BLOCK_PER_PARTITION == 0) {
-		blockorder = 0;
-	}
-	blockvalidation = 0;
-
-	double partition_page = log(NUMBER_PARTITION) / log(2);
-	int partition_p = ceil(partition_page);
-	if (partition_p % 8 != 0) {
-		partition_p = partition_p / 8 + 1;
-	}
-	else {
-		partition_p = partition_p / 8;
-	}
-
-	double cluster_page = log(PAGE_PER_CLUSTER) / log(2);
-	int cluster_p = ceil(cluster_page);
-	if (cluster_p % 8 != 0) {
-		cluster_p = cluster_p / 8 + 1;
-	}
-	else {
-		cluster_p = cluster_p / 8;
-	}
-
-	int map_size = NUMBER_PARTITION *(bit + startLPN + startPPN + endPPN + valid + blockorder + partition_p + partition_p); //seq pointer
-	//map_size = map_size + (partition_p) * NUMBER_PARTITION;
-	map_size = map_size + (8 + partition_p) * NUMBER_STREAM;
-	map_size = map_size + NUMBER_CLUSTER * (cluster_p + partition_p);
-	*/
 	int map_size = 0;
 	// Map size with bit
 	if (PARTITION_SIZE < 1 * MB) {
@@ -872,80 +800,142 @@ void print_count(char * file, int trace_total_write) {
 
 	}
 
-	//fprintf(fp, "FTL, STREAM, WRITE, READ, ERASE, IO_WRITE, IO_READ, B.GC.write, B.GC.read, B.GC.erase, P.GC.write, P.GC.read, MAP_SIZE, #.PA\n");
 	fprintf(fp, "%d, ", NUMBER_STREAM);
 	fprintf(fp, "%d, ", PARTITION_SIZE);
 	fprintf(fp, "%d, ", CLUSTER_SIZE);
 	fprintf(fp, "%d, ", NUMBER_PARTITION);
 	fprintf(fp, "%d, ", map_size);
-	fprintf(fp, "%d, ", COUNT.write + COUNT.partition.gc_write + COUNT.block.gc_write);
-	fprintf(fp, "%d, ", COUNT.read + COUNT.partition.gc_read + COUNT.block.gc_read);
-	fprintf(fp, "%d, ", COUNT.block.gc);
-	fprintf(fp, "%d, ", COUNT.write);
-	fprintf(fp, "%d, ", COUNT.read);
-	fprintf(fp, "%d, ", COUNT.block.gc_write);
-	fprintf(fp, "%d, ", COUNT.block.gc_read);
-	fprintf(fp, "%d, ", COUNT.block.gc);
-	fprintf(fp, "%d, ", COUNT.partition.gc_write);
-	fprintf(fp, "%d, ", COUNT.partition.gc_read);
-	fprintf(fp, "%d, ", COUNT.partition.gc);
-	fprintf(fp, "%d, ", COUNT.null_partition);
-	fprintf(fp, "%d, ", COUNT.IO_mem);
-	fprintf(fp, "%d, ", COUNT.IO_mem_M);
-	fprintf(fp, "%d, ", COUNT.block.mem);
-	fprintf(fp, "%d\n", COUNT.partition.mem);
+	fprintf(fp, "%d, ", get_count(prof_NAND_write));
+	fprintf(fp, "%d, ", get_count(prof_NAND_read));
+	fprintf(fp, "%d, ", get_count(prof_NAND_erase));
+
+	fprintf(fp, "%d, ", get_count(prof_IO_write));
+	fprintf(fp, "%d, ", get_count(prof_IO_read));
+	fprintf(fp, "%d, ", get_count(prof_IO_overwrite));
+	fprintf(fp, "%d, ", get_count(prof_IO_nullread));
+	fprintf(fp, "%d, ", get_count(prof_IO_write_req));
+	fprintf(fp, "%d, ", get_count(prof_IO_read_req));
+
+	fprintf(fp, "%d, ", get_count(prof_BGC_write));
+	fprintf(fp, "%d, ", get_count(prof_BGC_read));
+	fprintf(fp, "%d, ", get_count(prof_BGC_erase));
+	fprintf(fp, "%d, ", get_count(prof_BGC_cnt));
+
+	fprintf(fp, "%d, ", get_count(prof_PGC_write));
+	fprintf(fp, "%d, ", get_count(prof_PGC_read));
+	fprintf(fp, "%d, ", get_count(prof_PGC_erase));
+	fprintf(fp, "%d, ", get_count(prof_PGC_cnt));
+	fprintf(fp, "%d, ", get_count(prof_PGC_victim));
 
 }
 
+static int* return_cnt_ptr(int flag) {
 
+	int *pcnt = NULL;
 
-void READ_count(int flag) {
-	COUNT.read++;
-}
+	switch (flag) {
+	// NAND
+	case prof_NAND_write:
+		pcnt = &stat.nand.write;
+		break;
 
-void normal_WRITE_count() {
-	COUNT.write++;
-}
+	case prof_NAND_read:
+		pcnt = &stat.nand.read;
+		break;
 
-void WRITE_count(int flag) {
-	if (flag == IO_WRITE) {
-		normal_WRITE_count();
+	case prof_NAND_erase:
+		pcnt = &stat.nand.erase;
+		break;
+
+	// IO
+	case prof_IO_write:
+		pcnt = &stat.io.nand.write;
+		break;
+
+	case prof_IO_read:
+		pcnt = &stat.io.nand.read;
+		break;
+
+	case prof_IO_overwrite:
+		pcnt = &stat.io.overwrite;
+		break;
+
+	case prof_IO_nullread:
+		pcnt = &stat.io.null_read;
+		break;
+
+	case prof_IO_write_req:
+		pcnt = &stat.io.write_req;
+		break;
+
+	case prof_IO_read_req:
+		pcnt = &stat.io.read_req;
+		break;
+	
+	// PGC
+	case prof_PGC_cnt:
+		pcnt = &stat.pgc.pgc_cnt;
+		break;
+
+	case prof_PGC_victim:
+		pcnt = &stat.pgc.num_victim_partition;
+		break;
+
+	case prof_PGC_free:
+		pcnt = &stat.pgc.partition_free_cnt;
+		break;
+
+	case prof_PGC_write:
+		pcnt = &stat.pgc.nand.write;
+		break;
+
+	case prof_PGC_read:
+		pcnt = &stat.pgc.nand.read;
+		break;
+
+	case prof_PGC_erase:
+		pcnt = &stat.pgc.nand.erase;
+		break;
+
+	// BGC
+	case prof_BGC_cnt:
+		pcnt = &stat.bgc.bgc_cnt;
+		break;
+
+	case prof_BGC_write:
+		pcnt = &stat.bgc.nand.write;
+		break;
+
+	case prof_BGC_read:
+		pcnt = &stat.bgc.nand.read;
+		break;
+
+	case prof_BGC_erase:
+		pcnt = &stat.bgc.nand.erase;
+		break;
+
+	default:
+		assert(0);
+		break;
 	}
-	else if (flag == PGC) {
-		PARTITIONGC_WRITE_count();
-	}
-	else if (flag == BGC) {
-		BLOCKGC_WRITE_count();
-	}
+
+	return pcnt;
 }
 
-void PARTITIONGC_count() {
-	COUNT.partition.gc++;
+void do_count(int flag, int cnt)
+{
+	int *pcnt;
+
+	pcnt = return_cnt_ptr(flag);
+
+	*pcnt += cnt;
 }
 
-void BLOCKGC_count() {
-	COUNT.block.gc++;
+int get_count(int flag) {
+
+	int *pcnt;
+
+	pcnt = return_cnt_ptr(flag);
+
+	return *pcnt;
 }
-
-void PARTITIONGC_READ_count() {
-	COUNT.partition.gc_read++;
-}
-
-void PARTITIONGC_WRITE_count() {
-	COUNT.partition.gc_write++;
-}
-
-void BLOCKGC_READ_count() {
-	COUNT.block.gc_read++;
-}
-
-void BLOCKGC_WRITE_count() {
-	COUNT.block.gc_write++;
-}
-
-
-void MEM_COUNT_IO(int IO_type) {
-	if (IO_READ == 1)
-		COUNT.IO_mem++;
-}
-
