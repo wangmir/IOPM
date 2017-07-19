@@ -10,7 +10,7 @@ void check_LPN_MAP(int LPN, int PPN)
 		// check MAP
 		int partition, test_PPN;
 
-		test_PPN = LPN2PPN(LPN, &partition, IO);
+		test_PPN = LPN2PPN(LPN, &partition, TEST);
 
 		if (partition == -1)
 			assert(0);
@@ -26,6 +26,43 @@ void check_OOB_MAP(int LPN, int PPN) {
 		assert(PB[PPN / PAGE_PER_BLOCK].PPN2LPN[PPN % PAGE_PER_BLOCK] == LPN);
 	}
 }
+
+void check_total_MAP() {
+
+	if (ERROR_CHECKING_ON) {
+
+		// check LPN MAP
+		for (int i = 0; i < LOGICAL_FLASH_SIZE / PAGE_SIZE; i++) {
+
+			int partition, PPN;
+
+			PPN = LPN2PPN(i, &partition, TEST);
+
+			if (partition == -1)
+				continue;
+
+			check_OOB_MAP(i, PPN);
+
+		}
+		
+		// check OOB MAP
+		for (int i = 0; i < FLASH_SIZE / PAGE_SIZE; i++) {
+
+			int valid, LPN;
+
+			if (NAND_is_valid(BLOCK_FROM_PPN(i), OFFSET_FROM_PPN(i))) {
+
+				LPN = PB[BLOCK_FROM_PPN(i)].PPN2LPN[OFFSET_FROM_PPN(i)];
+
+				if(LPN != -1)
+					check_LPN_MAP(LPN, i);
+			}
+			else
+				continue;
+		}
+	}
+}
+
 
 // check validity of partition
 void __check_partition_validity(int partition) {
@@ -57,8 +94,8 @@ void __check_partition_validity(int partition) {
 				valid_count++;
 
 				// this page can be accessible through cluster?
-				int OOB_LPN = NAND_read(block, j);
-				int PPN = IOPM_read(OOB_LPN, IO);
+				int OOB_LPN = PB[block].PPN2LPN[j];
+				int PPN = IOPM_read(OOB_LPN, TEST);
 
 				if (PPN != PPN_FROM_PBN_N_OFFSET(block, j)) {
 					printf("ERROR: reverse map and IOPM map is not same\n");
@@ -131,3 +168,4 @@ void check_validity() {
 	}
 
 }
+

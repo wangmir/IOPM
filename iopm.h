@@ -12,6 +12,7 @@
 #define IO 0
 #define PGC 2
 #define BGC 3
+#define TEST 4
 
 #define CLUSTER_FROM_LPN(LPN) ((LPN) / PAGE_PER_CLUSTER)
 

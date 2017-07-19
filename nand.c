@@ -12,7 +12,7 @@ void NAND_init() {
 		PB[i].PPN2LPN = (int *)malloc(sizeof(int) * PAGE_PER_BLOCK);
 
 		for (int j = 0; j<PAGE_PER_BLOCK; j++) {
-			PB[i].valid[j] = -1;
+			PB[i].valid[j] = 0;
 			PB[i].PPN2LPN[j] = -1;
 		}
 	}
@@ -53,7 +53,7 @@ void NAND_erase(int block) {
 	/* Init PB structure*/
 	for (int i = 0; i < PAGE_PER_BLOCK; i++) {
 		PB[block].PPN2LPN[i] = -1;
-		PB[block].valid[i] = -1;
+		PB[block].valid[i] = 0;
 	}
 
 	do_count(prof_NAND_erase, 1);

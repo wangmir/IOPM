@@ -294,6 +294,12 @@ int LPN2PPN(int LPN, int *partition, int IO_type)
 
 				int PPN = Partition2PPN(LPN, ppvb->partition_num, IO_type);
 
+				if (PPN == -1) {
+					// there are no available PPN
+					// the block might be reclaimed
+					continue;
+				}
+
 				if (NAND_is_valid(BLOCK_FROM_PPN(PPN), OFFSET_FROM_PPN(PPN))) {
 					*partition = ppvb->partition_num;
 					return PPN;
@@ -353,6 +359,10 @@ int Partition2PPN(int LPN, int partition, int IO_type) {
 		off = phy_offset - start_off_off;
 		block = off / PAGE_PER_BLOCK;		// start를 제외. 0이면 그 다음 block
 		offset = off % PAGE_PER_BLOCK;
+
+		if (PVB[partition].block[block + 1] == PVB_BLOCK_RECLAIMED)
+			return -1;
+
 		PPN = PVB[partition].block[block + 1] * PAGE_PER_BLOCK + offset;
 	}
 	else {
@@ -362,9 +372,6 @@ int Partition2PPN(int LPN, int partition, int IO_type) {
 		offset = phy_offset;
 		PPN = PVB[partition].startPPN + offset;
 	}
-	check_OOB_MAP(LPN, PPN);
-
-
 	return PPN;
 }
 

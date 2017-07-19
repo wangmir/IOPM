@@ -93,8 +93,6 @@ int break_GC;
 int close_blockGC;
 int close_streamGC;
 
-int MTB;
-
 /*
 *	Structures
 */

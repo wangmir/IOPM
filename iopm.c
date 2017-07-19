@@ -25,13 +25,13 @@ int IOPM_read(int LPN, int IO_type) {
 		do_count(prof_IO_read, 1);
 	else if (IO_type == PGC)
 		do_count(prof_PGC_read, 1);
-	else
+	else if (IO_type == BGC)
 		do_count(prof_BGC_read, 1);
 	/*********************/
 
 	PPN = LPN2PPN(LPN, &partition, IO);
 
-	if (PPN == -1)
+	if (PPN == -1 && IO_type != TEST)
 		do_count(prof_IO_nullread, 1);
 
 	return PPN;
@@ -165,6 +165,7 @@ void IOPM_write(int LPN, int IO_type) {
 	// Set PVB
 	insert_bitmap(partition, LPN - ppvb->startLPN);
 	ppvb->valid++;
+
 	ppvb->endPPN = psit->recentPPN; //temporal endPPN, will be changed if the partition is not closed 
 
 	// Set CLUSTER

@@ -46,6 +46,7 @@ int main(int argc, char *argv[]) {
 		
 		// debug
 		check_validity();
+		check_total_MAP();
 
 		printf("\n[main] RAND WRITE\n");
 		RandomInit(1);
@@ -168,7 +169,11 @@ int main(int argc, char *argv[]) {
 			}
 		}
 	}
-	printf("\n[main] AGING FINN\n");	
+	printf("\n[main] AGING FINN\n");
+
+	// debug
+	check_validity();
+	check_total_MAP();
 
 	//fopen_s(&fp, file, "r");
 	fp = fopen(file, "r");
@@ -180,6 +185,7 @@ int main(int argc, char *argv[]) {
 	i = 0;
 	while (!feof(fp)) {
 		trace_total_write++;
+
 		int result;
 		if (MSR == 1) {
 			result = trace_parsing_msr(fp, &start_LPN, &count);
@@ -414,14 +420,8 @@ void command_setting(int argc, char *argv[]) {
 	CUTTER = 0;
 	AGINGFILE = NULL;
 	//test_setting();
-	MTB = 0;
 
 	for (i = 0; i<argc; i++) {
-
-		if (strcmp(argv[i], "-mtb") == 0) {
-			i++;
-			MTB = atoi(argv[i]) * KB;
-		}
 
 		if (strcmp(argv[i], "-aging") == 0) {
 			i++;
@@ -515,8 +515,6 @@ void command_setting(int argc, char *argv[]) {
 		}
 	}
 
-	
-
 	NUMBER_CLUSTER = LOGICAL_FLASH_SIZE / CLUSTER_SIZE;
 
 	FLASH_SIZE = LOGICAL_FLASH_SIZE + OVERPROVISION;
@@ -586,142 +584,6 @@ void count_init() {
 	memset(&stat, 0x00, sizeof(_STAT));
 }
 
-
-
-#if 0
-void print_count(char * file, int trace_total_write) {
-	printf("printf_count\n");
-	FILE *fp;
-	char file_name[1024];
-	char *tok;
-	char * extension = ".txt";
-	char * underbar = "_";
-	char part_size[1024];
-	char clus_size[1024];
-	char st_size[1024];
-	char num_part[1024];
-
-	sprintf_s(part_size,1024, "%dMB", PARTITION_SIZE/MB);
-	sprintf_s(clus_size,1024, "%dMB", CLUSTER_SIZE/MB);
-	sprintf_s(st_size, 1024, "%dGB", LOGICAL_FLASH_SIZE / GB);
-	sprintf_s(num_part, 1024, "#PA.%d", NUMBER_STREAM);
-
-	strcpy_s(file_name, sizeof(file_name), file);
-	strtok_s(file_name, ".", &tok);
-	strcat_s(file_name, sizeof(file_name), underbar);
-	strcat_s(file_name, 1024, part_size);
-	strcat_s(file_name, sizeof(file_name), underbar);
-	strcat_s(file_name, 1024, clus_size);
-	strcat_s(file_name, sizeof(file_name), underbar);
-	strcat_s(file_name, 1024, st_size);
-	strcat_s(file_name, sizeof(file_name), underbar);
-	strcat_s(file_name, 1024, num_part);
-	strcat_s(file_name, 1024, extension);
-
-	// trace_partition_cluster_st.txt
-	fopen_s(&fp, file_name, "w");
-
-	fprintf(fp, "NUMBER_PARTITION : %d K\n", NUMBER_PARTITION / K);
-	fprintf(fp, "PARTITION_SIZE : %d MB\n", PARTITION_SIZE / MB);
-	fprintf(fp, "NUMBER_STREAM : %d\n", NUMBER_STREAM);
-	fprintf(fp, "SECTOR_SIZE : %d Byte\n", SECTOR_SIZE);
-	fprintf(fp, "PAGE_SIZE : %d KB\n", PAGE_SIZE / KB);
-	fprintf(fp, "BLOCK_SIZE : %d KB\n", BLOCK_SIZE / KB);
-	fprintf(fp, "LOGICAL_FLASH_SIZE : %d GB\n", LOGICAL_FLASH_SIZE / GB);
-	fprintf(fp, "OVERPROVISION : %f\n", OVERPROVISION);
-	fprintf(fp, "FLASH_SIZE : %d GB\n", FLASH_SIZE / GB);
-	fprintf(fp, "FREE_BLOCK : %d\n", FREE_BLOCK);
-	fprintf(fp, "PAGE_PER_BLOCK : %d\n", PAGE_PER_BLOCK);
-	fprintf(fp, "CLUSTER_SIZE : %d MB\n", CLUSTER_SIZE / MB);
-	fprintf(fp, "NUMBER_CLUSTER : %d\n", NUMBER_CLUSTER);
-	fprintf(fp, "PARTITION_CLUSTER : %d\n\n", PARTITION_PER_CLUSTER);
-	fprintf(fp, "STREAM : %d\n\n", NUMBER_STREAM);
-	fprintf(fp, "[DEBUG] SEQ RATE: %f\n", SEQ_RATE);
-	fprintf(fp, "[DEBUG] RANDOM RATE : %f\n", RANDOM_RATE);
-	fprintf(fp, "[DEBUG] RANDOM MOUNT : %f\n", RANDOM_MOUNT);
-	fprintf(fp, "[DEBUG] RANDOM_INCREASE : %d\n", RANDOM_INCREASE);
-	fprintf(fp, "[DEBUG] RANDOM_SIZE : %d\n", RANDOM_SIZE);
-
-
-	/**/
-	int bit;
-	if (PAGE_PER_PARTITION % 8 != 0) {
-		bit = PAGE_PER_PARTITION / 8 + 1;
-	}
-	else {
-		bit = PAGE_PER_PARTITION / 8;
-	}
-	int startLPN = 4;
-	int startPPN = 4;
-	int endPPN = 4;
-	double valid_d = log(PAGE_PER_PARTITION) / log(2);
-	int valid = ceil(valid_d);
-	
-	int blockvalidation;
-	int BLOCK_PER_PARTITION = PARTITION_SIZE / BLOCK_SIZE;
-	if ((BLOCK_PER_PARTITION+1) % 8 != 0) {
-		blockvalidation = (BLOCK_PER_PARTITION + 1) % 8 + 1;
-	}
-	else {
-		blockvalidation = (BLOCK_PER_PARTITION + 1) % 8;
-	}
-	int blockorder = (BLOCK_PER_PARTITION-1)*4;
-
-
-	int map_size = NUMBER_PARTITION *(bit+startLPN+startPPN+endPPN+valid+blockvalidation+blockorder);
-	map_size = map_size + 8 * NUMBER_PARTITION;
-	map_size = map_size + 12 * NUMBER_STREAM;
-	map_size = map_size + NUMBER_CLUSTER * 4 + 8 * NUMBER_PARTITION;
-
-
-	//fprintf(fp, "FTL, STREAM, WRITE, READ, ERASE, IO_WRITE, IO_READ, B.GC.write, B.GC.read, B.GC.erase, P.GC.write, P.GC.read, MAP_SIZE, #.PA\n");
-	fprintf(fp, "FTL, STREAM, WRITE, READ, ERASE, MAP_SIZE, #.PA\n"); 
-	fprintf(fp, "IOPM, ");
-	fprintf(fp, "%d, ",NUMBER_STREAM);
-	fprintf(fp, "%d, ", COUNT.write + COUNT.partition.gc_write + COUNT.block.gc_write);
-	fprintf(fp, "%d, ", COUNT.read + COUNT.partition.gc_read + COUNT.block.gc_read);
-	/*fprintf(fp, "%d, ", COUNT.block.gc);
-	fprintf(fp, "%d, ", COUNT.write);
-	fprintf(fp, "%d, ", COUNT.read);
-	fprintf(fp, "%d, ", COUNT.block.gc_write);
-	fprintf(fp, "%d, ", COUNT.block.gc_read);
-	fprintf(fp, "%d, ", COUNT.block.gc);
-	fprintf(fp, "%d, ", COUNT.partition.gc_write);
-	fprintf(fp, "%d, ", COUNT.partition.gc_read);*/
-	fprintf(fp, "%d, ", map_size);
-	fprintf(fp, "%d, ", NUMBER_PARTITION);
-	fprintf(fp, "\n");
-	fprintf(fp, "OP, IO, MAP, GC, P.GC\n");
-	fprintf(fp, "W, ");
-	fprintf(fp, "%d, ", COUNT.write);
-	fprintf(fp, "0, ");
-	fprintf(fp, "%d, ", COUNT.block.gc_write);
-	fprintf(fp, "%d, ", COUNT.partition.gc_write);
-	fprintf(fp, "\n");
-	fprintf(fp, "R, ");
-	fprintf(fp, "%d, ", COUNT.read);
-	fprintf(fp, "0, ");
-	fprintf(fp, "%d, ", COUNT.block.gc_read);
-	fprintf(fp, "%d, ", COUNT.partition.gc_read);
-	fprintf(fp, "\n");
-
-	fprintf(fp, "\n\n");
-	fprintf(fp, "IO_WRITE, IO_READ, B.GC.write, B.GC.read, B.GC.erase, P.GC.write, P.GC.read, P.GC, P.nullGC, break_GC, closeP, closeB\n");
-	fprintf(fp, "%d, ", COUNT.write);
-	fprintf(fp, "%d, ", COUNT.read);
-	fprintf(fp, "%d, ", COUNT.block.gc_write);
-	fprintf(fp, "%d, ", COUNT.block.gc_read);
-	fprintf(fp, "%d, ", COUNT.block.gc);
-	fprintf(fp, "%d, ", COUNT.partition.gc_write);
-	fprintf(fp, "%d, ", COUNT.partition.gc_read);
-	fprintf(fp, "%d, ", COUNT.partition.gc);
-	fprintf(fp, "%d, ", COUNT.null_partition);
-	fprintf(fp, "%d, ", break_GC);
-	fprintf(fp, "%d, ", close_streamGC);
-	fprintf(fp, "%d, ", close_blockGC);
-
-}
-#endif
 void print_count(char * file, int trace_total_write) {
 	printf("printf_count\n");
 	FILE *fp;
