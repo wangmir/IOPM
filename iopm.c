@@ -76,10 +76,18 @@ void IOPM_write(int LPN, int IO_type) {
 	int cluster = CLUSTER_FROM_LPN(LPN);
 	_CLUSTER *pcluster = &CLUSTER[cluster];
 
+#if SORTED_CLUSTER_LIST
+
+#if PGC_INCLUDE_ACTIVE_AS_VICTIM
 	// checking cluster's pre valid, num partition
 	int pre_valid = pcluster->valid;
 	int pre_num_partition = pcluster->num_partition;
-	
+#else
+	int pre_valid = pcluster->inactive_valid;
+	int pre_num_partition = pcluster->inactive_partition;
+#endif
+
+#endif
 	// Select the Stream
 	int stream = select_stream(LPN, IO_type);
 	_SIT *psit = &SIT[stream];
@@ -215,8 +223,17 @@ void IOPM_write(int LPN, int IO_type) {
 
 #if SORTED_CLUSTER_LIST
 
+#if PGC_INCLUDE_ACTIVE_AS_VICTIM
+	// if mean valid pages of cluster are changed, then re-sort the victim list
 	if(pre_num_partition && ((pre_valid / pre_num_partition) != (pcluster->valid / pcluster->num_partition)))
 		insert_cluster_to_victim_list(cluster);
+
+#else
+	if(!pcluster->inactive_partition)
+		list_del(&pcluster->c_list);
+	else if (pre_num_partition && ((pre_valid / pre_num_partition) != (pcluster->inactive_valid / pcluster->inactive_partition)))
+		insert_cluster_to_victim_list(cluster);
+#endif
 #endif
 
 	// do partition gc
@@ -248,6 +265,9 @@ void BlockGC() {
 
 				GC_temp_LPN[GC_temp_cnt] = NAND_read(victim_block, i);
 				GC_temp_PPN[GC_temp_cnt] = PPN_FROM_PBN_N_OFFSET(victim_block, i);
+
+				check_LPN_MAP(GC_temp_LPN[GC_temp_cnt], GC_temp_PPN[GC_temp_cnt]);
+
 				GC_temp_cnt++;
 			}
 		}

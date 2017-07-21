@@ -76,7 +76,9 @@ void do_gc_if_needed(int IOtype) {
 				PartitionGC();
 			}
 			if (free_block < BLOCK_LIMIT) {
-				BlockGC();
+				while (free_block < BLOCK_LIMIT) {
+					BlockGC();
+				}
 			}
 		}
 	}
@@ -101,7 +103,8 @@ void remove_partition_from_cluster(int partition, int IO_type) {
 	pcluster->valid -= ppvb->valid;
 	pcluster->num_partition--;
 
-	pcluster->inactive_partition--;
+	if(!ppvb->active_flag)
+		pcluster->inactive_partition--;
 		
 	// partition free
     put_partition(partition);
@@ -513,7 +516,13 @@ void insert_cluster_to_victim_list(int cluster) {
 	else {
 
 		list_for_each_entry(_CLUSTER, ppcl, &victim_cluster_list, c_list) {
+
+#if PGC_INCLUDE_ACTIVE_AS_VICTIM
 			if ((pcluster->valid / pcluster->num_partition) <= (ppcl->valid / ppcl->num_partition)) {
+#else
+			if ((pcluster->inactive_valid / pcluster->inactive_partition) 
+				<= (ppcl->inactive_valid / ppcl->inactive_partition)) {
+#endif
 				list_add_tail(&pcluster->c_list, &ppcl->c_list);
 				return;
 			}
@@ -534,8 +543,10 @@ int select_victim_block() {
 		if (pbit->is_active)
 			continue;
 
-		if (pbit->invalid > max_invalid)
+		if (pbit->invalid > max_invalid) {
+			max_invalid = pbit->invalid;
 			victim_block = pbit->block_num;
+		}
 	}
 
 	return victim_block;
@@ -554,8 +565,11 @@ int select_victim_cluster() {
 	_CLUSTER *ppcl = NULL;
 
 	list_for_each_entry(_CLUSTER, ppcl, &victim_cluster_list, c_list) {
-		
+#if PGC_INCLUDE_ACTIVE_AS_VICTIM
 		if (ppcl->num_partition >= 2)
+#else
+		if(ppcl->inactive_partition >= 2)
+#endif
 			return ppcl->cluster_num;
 	}
 
@@ -604,7 +618,7 @@ void select_victim_partition(int cluster, int *p_array) {
 	// pick <MAX_NUM_PARTITION_PGC> partitions, which have minimum number of valid pages, from victim cluster
 	list_for_each_entry(_PVB, ppvb, &pcluster->p_list, p_list) {
 
-#ifdef PGC_INCLUDE_ACTIVE_AS_VICTIM
+#if PGC_INCLUDE_ACTIVE_AS_VICTIM
 		if (ppvb->active_flag)
 			close_partition(ppvb->partition_num);
 #else

@@ -29,9 +29,9 @@ int main(int argc, char *argv[]) {
 	break_GC = 0;
 	close_streamGC = 0;
 	close_blockGC = 0;
-
+	
 	/* Aging */
-	if (AGINGFILE == NULL){
+	if (DO_INIT_FLAG && AGINGFILE == NULL){
 		// seq
 		printf("[main] SEQ WRITE\n");
 		for (i = 0; i < LOGICAL_FLASH_SIZE / PAGE_SIZE * SEQ_RATE; i++) {
@@ -79,6 +79,9 @@ int main(int argc, char *argv[]) {
 			else {
 				while (i <= (int)(LOGICAL_FLASH_SIZE / PAGE_SIZE * RANDOM_MOUNT)) {
 
+					if (i == 2343363)
+						printf("!!");
+
 					int page = IRandom(last_page, (int)(LOGICAL_FLASH_SIZE / PAGE_SIZE * RANDOM_RATE));
 					write(page, RANDOM_SIZE);
 					last_page = page;
@@ -125,7 +128,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 	}
-	else {
+	else if (DO_INIT_FLAG){
 		//fopen_s(&fp2, AGINGFILE, "r");
 		fp2 = fopen(AGINGFILE, "r");
 
@@ -169,6 +172,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 	}
+
 	printf("\n[main] AGING FINN\n");
 
 	// debug
@@ -183,6 +187,9 @@ int main(int argc, char *argv[]) {
 	close_blockGC = 0;
 	close_streamGC = 0;
 	i = 0;
+
+	int write_amount = 0;
+
 	while (!feof(fp)) {
 		trace_total_write++;
 
@@ -195,8 +202,9 @@ int main(int argc, char *argv[]) {
 		}
 	
 		if (result == 1) {
-			if (start_LPN + count < (LOGICAL_FLASH_SIZE /PAGE_SIZE)) {
+			if (start_LPN + count < (LOGICAL_FLASH_SIZE / PAGE_SIZE)) {
 				//trace_total_write = trace_total_write + count;
+				write_amount += count;
 				write(start_LPN, count);
 			}
 		}
@@ -421,11 +429,17 @@ void command_setting(int argc, char *argv[]) {
 	AGINGFILE = NULL;
 	//test_setting();
 
+	DO_INIT_FLAG = 1;
+
 	for (i = 0; i<argc; i++) {
 
 		if (strcmp(argv[i], "-aging") == 0) {
 			i++;
 			AGINGFILE = argv[i];
+		}
+		if (strcmp(argv[i], "-init") == 0) {
+			i++;
+			DO_INIT_FLAG = atoi(argv[i]);
 		}
 
 		if (strcmp(argv[i], "-cut") == 0) {
@@ -687,7 +701,8 @@ void print_count(char * file, int trace_total_write) {
 	fprintf(fp, "%d, ", get_count(prof_PGC_read));
 	fprintf(fp, "%d, ", get_count(prof_PGC_erase));
 	fprintf(fp, "%d, ", get_count(prof_PGC_cnt));
-	fprintf(fp, "%d, ", get_count(prof_PGC_victim));
+	fprintf(fp, "%d", get_count(prof_PGC_victim));
+	fprintf(fp, "\n");
 
 }
 

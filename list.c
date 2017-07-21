@@ -30,6 +30,7 @@ void list_del(struct list_head *entry)
 	__list_del(entry->prev, entry->next);
 	entry->next = (void *)0;
 	entry->prev = (void *)0;
+	INIT_LIST_HEAD(entry);
 }
 
 void list_del_init(struct list_head *entry)

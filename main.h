@@ -88,6 +88,7 @@ char * AGINGFILE;
 int MSR;
 int CUTTER;
 int AGING_IO;
+int DO_INIT_FLAG;
 
 int break_GC;
 int close_blockGC;
