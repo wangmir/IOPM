@@ -48,7 +48,7 @@ void check_total_MAP() {
 		// check OOB MAP
 		for (int i = 0; i < FLASH_SIZE / PAGE_SIZE; i++) {
 
-			int valid, LPN;
+			int LPN;
 
 			if (NAND_is_valid(BLOCK_FROM_PPN(i), OFFSET_FROM_PPN(i))) {
 

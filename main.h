@@ -47,7 +47,7 @@ int PAGE_SIZE;
 int BLOCK_SIZE;
 long long int LOGICAL_FLASH_SIZE;
 long long int FLASH_SIZE;
-double OVERPROVISION;
+long long int OVERPROVISION;
 int FREE_BLOCK;
 int ALLOC_PARTITION;
 

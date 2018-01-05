@@ -3,7 +3,7 @@
 
 #include <assert.h>
 
-#define ERROR_CHECKING_ON (1)
+#define ERROR_CHECKING_ON (0)
 
 void check_LPN_MAP(int LPN, int PPN);
 void check_OOB_MAP(int LPN, int PPN);

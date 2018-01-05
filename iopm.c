@@ -31,6 +31,9 @@ int IOPM_read(int LPN, int IO_type) {
 
 	PPN = LPN2PPN(LPN, &partition, IO);
 
+	// NAND read count
+	do_count(prof_NAND_read, 1);
+
 	if (PPN == -1 && IO_type != TEST)
 		do_count(prof_IO_nullread, 1);
 
@@ -39,6 +42,7 @@ int IOPM_read(int LPN, int IO_type) {
 
 /* write 'count' pages started with 'start_LPN' */
 void write(int start_LPN, int count) {
+
 	int i;
 
 	do_count(prof_IO_write_req, 1);
@@ -52,7 +56,6 @@ void write(int start_LPN, int count) {
    flag = 1 : I/O read
    flag = 2 : write during PartitonGC
    flag = 3 : write during BlockGC */
-
 void IOPM_write(int LPN, int IO_type) {
 
 	/****** COUNTING ******/
@@ -106,7 +109,7 @@ void IOPM_write(int LPN, int IO_type) {
 			block = BLOCK_FROM_PPN(psit->recentPPN);
 			if (!BIT[block].is_active) {
 				printf("ERROR:: the block should be active\n");
-				getchar();
+				// getchar();
 			}
 			BIT[block].is_active = 0;
 		}

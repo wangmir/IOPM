@@ -79,9 +79,6 @@ int main(int argc, char *argv[]) {
 			else {
 				while (i <= (int)(LOGICAL_FLASH_SIZE / PAGE_SIZE * RANDOM_MOUNT)) {
 
-					if (i == 2343363)
-						printf("!!");
-
 					int page = IRandom(last_page, (int)(LOGICAL_FLASH_SIZE / PAGE_SIZE * RANDOM_RATE));
 					write(page, RANDOM_SIZE);
 					last_page = page;
@@ -218,7 +215,7 @@ int main(int argc, char *argv[]) {
 
 		}
 		else {
-			break;
+			continue;
 		}
 
 		if (trace_total_write % 5000 == 1)
@@ -237,8 +234,9 @@ int main(int argc, char *argv[]) {
 }
 
 int trace_parsing_msr(FILE *fp, int *start_LPN, int *count) {
+
 	char str[1024];
-	char str2[1024];
+
 	unsigned long long int timestamp;
 	char *hostname;
 	int disknum;
@@ -246,8 +244,6 @@ int trace_parsing_msr(FILE *fp, int *start_LPN, int *count) {
 	unsigned long long offset;
 	int size;
 	int responsetime;
-
-	char *tok = NULL;
 
 	//fscanf_s(fp, "%s", str, 1024);
 	fscanf(fp, "%s", str);
@@ -259,8 +255,7 @@ int trace_parsing_msr(FILE *fp, int *start_LPN, int *count) {
 
 	//timestamp = atoll(strtok_s(str, ",", &tok));
 	timestamp = atoll(strtok(str, ","));
-	if (timestamp == NULL)
-		return 2;
+
 	hostname = strtok(NULL, ",");
 	if (hostname == NULL)
 		return 2;
@@ -270,32 +265,27 @@ int trace_parsing_msr(FILE *fp, int *start_LPN, int *count) {
 	if (type == NULL)
 		return 2;
 	offset = atoll(strtok(NULL, ","));
-	if (offset == NULL)
-		return 2;
-	size = atoi(strtok(NULL, ","));
-	if (size == NULL)
-		return 2;
-	responsetime = atoi(strtok(NULL, ","));
-	if (responsetime == NULL)
-		return 2;
 
+	size = atoi(strtok(NULL, ","));
+
+	responsetime = atoi(strtok(NULL, ","));
 
 	if (strstr(type, "W")) {
-		*start_LPN = offset / PAGE_SIZE;
+		*start_LPN = (int)(offset / PAGE_SIZE);
 
 		if ((offset + size) % PAGE_SIZE == 0)
-			*count = (offset + size) / PAGE_SIZE - offset / PAGE_SIZE;
+			*count = (int)((offset + size) / PAGE_SIZE - offset / PAGE_SIZE);
 		else
-			*count = (offset + size) / PAGE_SIZE + 1 - offset / PAGE_SIZE;
+			*count = (int)((offset + size) / PAGE_SIZE + 1 - offset / PAGE_SIZE);
 
 		return 1;
 	}else if (strstr(type, "R")) {
-		*start_LPN = offset / PAGE_SIZE;
+		*start_LPN = (int)(offset / PAGE_SIZE);
 
 		if ((offset + size) % PAGE_SIZE == 0)
-			*count = (offset + size) / PAGE_SIZE - offset / PAGE_SIZE;
+			*count = (int)((offset + size) / PAGE_SIZE - offset / PAGE_SIZE);
 		else
-			*count = (offset + size) / PAGE_SIZE + 1 - offset / PAGE_SIZE;
+			*count = (int)((offset + size) / PAGE_SIZE + 1 - offset / PAGE_SIZE);
 
 		return 0;
 	}
@@ -312,7 +302,7 @@ int trace_parsing_filebench(FILE *fp, int* start_LPN, int *count) {
 
 	char str[1024];
 	fgets(str, sizeof(str), fp);
-	char *tok;
+
 	//timestamp = atoll(strtok_s(str, ",", &tok));
 
 	if (strstr(str, "W") != NULL) {
@@ -505,17 +495,17 @@ void command_setting(int argc, char *argv[]) {
 
 		if (strcmp(argv[i], "-pac") == 0) {
 			i++;
-			NUMBER_PARTITION = atoi(argv[i])*K;
+			NUMBER_PARTITION = atoi(argv[i]);
 		}
 
 		if (strcmp(argv[i], "-ps") == 0) {
 			i++;
-			PAGE_SIZE = atoi(argv[i]);
+			PAGE_SIZE = atoi(argv[i]) * KB;
 		}
 
 		if (strcmp(argv[i], "-bs") == 0) {
 			i++;
-			BLOCK_SIZE = atoi(argv[i]);
+			BLOCK_SIZE = atoi(argv[i]) * KB;
 		}
 
 		if (strcmp(argv[i], "-ss") == 0) {
@@ -529,7 +519,7 @@ void command_setting(int argc, char *argv[]) {
 		}
 	}
 
-	NUMBER_CLUSTER = LOGICAL_FLASH_SIZE / CLUSTER_SIZE;
+	NUMBER_CLUSTER = (int)(LOGICAL_FLASH_SIZE / CLUSTER_SIZE);
 
 	FLASH_SIZE = LOGICAL_FLASH_SIZE + OVERPROVISION;
 	FREE_BLOCK = (int)(FLASH_SIZE / (long long int) BLOCK_SIZE);
@@ -554,18 +544,18 @@ void command_setting(int argc, char *argv[]) {
 	
 
 	// DEBUG
-	printf("[DEBUG] NUMBER_PARTITION : %d K\n", NUMBER_PARTITION/K);
-	printf("[DEBUG] PARTITION_SIZE : %d KB\n", PARTITION_SIZE/KB);
+	printf("[DEBUG] NUMBER_PARTITION : %lld K\n", NUMBER_PARTITION/K);
+	printf("[DEBUG] PARTITION_SIZE : %lld KB\n", PARTITION_SIZE/KB);
 	printf("[DEBUG] NUMBER_STREAM : %d\n", NUMBER_STREAM);
 	printf("[DEBUG] SECTOR_SIZE : %d Byte\n", SECTOR_SIZE);
-	printf("[DEBUG] PAGE_SIZE : %d KB\n", PAGE_SIZE/KB);
-	printf("[DEBUG] BLOCK_SIZE : %d KB\n", BLOCK_SIZE/KB);
-	printf("[DEBUG] LOGICAL_FLASH_SIZE : %d GB\n", LOGICAL_FLASH_SIZE/GB);
-	printf("[DEBUG] OVERPROVISION : %f\n", OVERPROVISION);
-	printf("[DEBUG] FLASH_SIZE : %d GB\n", FLASH_SIZE/GB);
+	printf("[DEBUG] PAGE_SIZE : %lld KB\n", PAGE_SIZE/KB);
+	printf("[DEBUG] BLOCK_SIZE : %lld KB\n", BLOCK_SIZE/KB);
+	printf("[DEBUG] LOGICAL_FLASH_SIZE : %lld GB\n", LOGICAL_FLASH_SIZE/GB);
+	printf("[DEBUG] OVERPROVISION : %lld\n", OVERPROVISION);
+	printf("[DEBUG] FLASH_SIZE : %lld GB\n", FLASH_SIZE/GB);
 	printf("[DEBUG] FREE_BLOCK : %d\n", FREE_BLOCK);
 	printf("[DEBUG] PAGE_PER_BLOCK : %d\n", PAGE_PER_BLOCK);
-	printf("[DEBUG] CLUSTER_SIZE : %d MB\n", CLUSTER_SIZE/MB);
+	printf("[DEBUG] CLUSTER_SIZE : %lld MB\n", CLUSTER_SIZE/MB);
 	printf("[DEBUG] NUMBER_CLUSTER : %d\n", NUMBER_CLUSTER);
 	printf("[DEBUG] PARTITION_CLUSTER : %d\n", PARTITION_PER_CLUSTER);
 	printf("[DEBUG] SEQ RATE: %f\n", SEQ_RATE);

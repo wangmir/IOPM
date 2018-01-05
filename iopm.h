@@ -4,7 +4,7 @@
 #include "list.h"
 
 // IOPM OPTION
-#define PGC_INCLUDE_ACTIVE_AS_VICTIM 0
+#define PGC_INCLUDE_ACTIVE_AS_VICTIM 1
 
 #define SORTED_CLUSTER_LIST 1
 //
@@ -18,7 +18,7 @@
 
 #define MAX_NUM_PARTITION_PGC 8
 
-#define PGC_COPY_THRESHOLD 8	// do PGC more, if currently we did few copies.
+#define PGC_COPY_THRESHOLD 0	// do PGC more, if currently we did few copies.
 
 /*
 * Mapping Structure

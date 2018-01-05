@@ -76,9 +76,7 @@ void do_gc_if_needed(int IOtype) {
 				PartitionGC();
 			}
 			if (free_block < BLOCK_LIMIT) {
-				while (free_block < BLOCK_LIMIT) {
-					BlockGC();
-				}
+				BlockGC();
 			}
 		}
 	}
