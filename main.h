@@ -129,6 +129,7 @@ typedef struct _BGC_CNT {
 
 	_NAND_CNT nand;
 	int bgc_cnt;
+	int ugc_cnt;
 
 }_BGC_CNT;
 
@@ -158,6 +159,7 @@ enum {
 	prof_BGC_read,
 	prof_BGC_erase,
 	prof_BGC_cnt,
+	prof_UGC_cnt,
 
 	prof_PGC_write,
 	prof_PGC_read,

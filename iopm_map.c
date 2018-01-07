@@ -19,8 +19,9 @@ int select_stream(int LPN, int IO_type) {
 		
 		// because this is active pool, SIT should have its LPN
 		assert(psit->recentLPN != -1);
-		
-		if (psit->recentLPN < LPN && CLUSTER_FROM_LPN(psit->recentLPN) == cluster) {
+
+		// if there are active stream with same cluster, then use it
+		if (CLUSTER_FROM_LPN(psit->recentLPN) == cluster) {
 			// fitting stream get!
 			goto result;
 		}
@@ -67,19 +68,6 @@ int allocate_partition(int flag) {
 void insert_partition_into_cluster(int cluster, int partition) {
 	list_add(&PVB[partition].p_list, &CLUSTER[cluster].p_list);
 	CLUSTER[cluster].num_partition++;
-}
-
-void do_gc_if_needed(int IOtype) {
-	if (IOtype == IO) {
-		while (free_partition < PARTITION_LIMIT || free_block < BLOCK_LIMIT) {
-			if (free_partition < PARTITION_LIMIT) {
-				PartitionGC();
-			}
-			if (free_block < BLOCK_LIMIT) {
-				BlockGC();
-			}
-		}
-	}
 }
 
 static void put_partition(int partition) {
@@ -156,6 +144,14 @@ void link_partition_to_BIT(int partition, int block) {
 	r_map->value = partition;
 
 	pbit->num_partition++;
+	
+	if(pbit->num_partition > 1){
+		pbit->hybrid_flag = 1;
+		
+		// add to the tail of allocated_block_pool cuz it is hybrid block
+		list_del(&pbit->b_list);
+		list_add_tail(&pbit->b_list, &allocated_block_pool);
+	}
 }
 
 void unlink_partition_from_BIT(int partition) {
@@ -168,6 +164,8 @@ void unlink_partition_from_BIT(int partition) {
 			continue;
 
 		_BIT *pbit = &BIT[ppvb->block[i]];
+
+		assert(!pbit->free_flag);
 
 		_LIST_MAP *plist = NULL;
 		
@@ -182,6 +180,14 @@ void unlink_partition_from_BIT(int partition) {
 		}
 
 		pbit->num_partition--;
+		
+		if(pbit->num_partition == 1){
+			pbit->hybrid_flag = 0;
+
+			// move to top of allocated_block_pool
+			list_del(&pbit->b_list);
+			list_add(&pbit->b_list, &allocated_block_pool);
+		}
 	}
 }
 
@@ -479,6 +485,7 @@ void put_block(int block, int flag) {
     pbit->free_flag = 1;
     pbit->invalid = 0;
     pbit->num_partition = 0;
+	pbit->hybrid_flag = 0;
 
     list_del(&pbit->b_list);
     list_add(&pbit->b_list, &free_block_pool);
@@ -493,6 +500,8 @@ void unlink_block_from_PVB(int block) {
 
 	list_for_each_entry(_LIST_MAP, plist, &pbit->linked_partition, list) {
 
+		assert(0); // it needs to be NULL because PVB has only one blocks
+
 		int partition = plist->value;
 
 		for (int i = 0; i < PVB[partition].blocknum; i++) {
@@ -506,21 +515,17 @@ void insert_cluster_to_victim_list(int cluster) {
 
 	_CLUSTER *pcluster = &CLUSTER[cluster];
 	_CLUSTER *ppcl = NULL;
-
+	
 	list_del(&pcluster->c_list);
-
-	if (list_empty(&victim_cluster_list))
+	
+	if (list_empty(&victim_cluster_list)){
 		list_add(&pcluster->c_list, &victim_cluster_list);
+	}
 	else {
 
 		list_for_each_entry(_CLUSTER, ppcl, &victim_cluster_list, c_list) {
-
-#if PGC_INCLUDE_ACTIVE_AS_VICTIM
-			if ((pcluster->valid / pcluster->num_partition) <= (ppcl->valid / ppcl->num_partition)) {
-#else
-			if ((pcluster->inactive_valid / pcluster->inactive_partition) 
-				<= (ppcl->inactive_valid / ppcl->inactive_partition)) {
-#endif
+			
+			if (pcluster->num_partition >= ppcl->num_partition) {
 				list_add_tail(&pcluster->c_list, &ppcl->c_list);
 				return;
 			}
@@ -529,6 +534,35 @@ void insert_cluster_to_victim_list(int cluster) {
 		list_add_tail(&pcluster->c_list, &victim_cluster_list);
 
 	}
+}
+
+int select_vicitim_block_for_unified_GC(){
+
+	_BIT *pbit = NULL;
+
+	int victim_block = -1, max_invalid = 0;
+	int non_hybrid = 0;
+
+	list_for_each_entry(_BIT, pbit, &allocated_block_pool, b_list) {
+		
+		if (pbit->is_active)
+			continue;
+
+		// non_hybrid block is in the allocated block pool
+		if(pbit->hybrid_flag == 0)
+			non_hybrid = 1;
+
+		if(pbit->hybrid_flag == 1)
+			break;
+
+		if (pbit->invalid > max_invalid && pbit->num_partition > 1) {
+			max_invalid = pbit->invalid;
+			victim_block = pbit->block_num;
+		}
+	}
+
+	return victim_block;
+
 }
 
 int select_victim_block() {
@@ -561,15 +595,21 @@ int select_victim_cluster() {
 		assert(0);
 
 	_CLUSTER *ppcl = NULL;
+	int max_num_partition = 0;
 
 	list_for_each_entry(_CLUSTER, ppcl, &victim_cluster_list, c_list) {
-#if PGC_INCLUDE_ACTIVE_AS_VICTIM
-		if (ppcl->num_partition >= 2)
-#else
-		if(ppcl->inactive_partition >= 2)
-#endif
-			return ppcl->cluster_num;
+
+		if((ppcl->num_partition >= max_num_partition) && (ppcl->valid <= victim_mean_valid)){
+			victim_cluster = ppcl->cluster_num;
+			max_num_partition = ppcl->num_partition;
+			victim_mean_valid = ppcl->valid;
+		}
+		else 
+			break;
 	}
+
+	assert(victim_cluster != -1);
+	return victim_cluster;
 
 #else
 
@@ -577,19 +617,12 @@ int select_victim_cluster() {
 
 		_CLUSTER *pcluster = &CLUSTER[i];
 
-#if PGC_INCLUDE_ACTIVE_AS_VICTIM
 		// at least 2 partitions are needed to handle partition GC
 		if (pcluster->num_partition < 2)
 			continue;
 
 		int mean_valid = pcluster->valid / pcluster->num_partition;
-#else
-		// at least 2 partitions are needed to handle partition GC
-		if (pcluster->inactive_partition < 2)
-			continue;
 
-		int mean_valid = pcluster->inactive_valid / pcluster->inactive_partition;
-#endif
 		if (victim_mean_valid > mean_valid)
 			victim_cluster = pcluster->cluster_num;
 	}
@@ -615,15 +648,6 @@ void select_victim_partition(int cluster, int *p_array) {
 
 	// pick <MAX_NUM_PARTITION_PGC> partitions, which have minimum number of valid pages, from victim cluster
 	list_for_each_entry(_PVB, ppvb, &pcluster->p_list, p_list) {
-
-#if PGC_INCLUDE_ACTIVE_AS_VICTIM
-		if (ppvb->active_flag)
-			close_partition(ppvb->partition_num);
-#else
-		// if there are enough partition to handle the pgc, then exclude the active partition
-		if (ppvb->active_flag)
-			continue;
-#endif
 
 		for (int i = 0; i < MAX_NUM_PARTITION_PGC; i++) {
 

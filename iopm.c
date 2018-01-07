@@ -80,16 +80,7 @@ void IOPM_write(int LPN, int IO_type) {
 	_CLUSTER *pcluster = &CLUSTER[cluster];
 
 #if SORTED_CLUSTER_LIST
-
-#if PGC_INCLUDE_ACTIVE_AS_VICTIM
-	// checking cluster's pre valid, num partition
-	int pre_valid = pcluster->valid;
 	int pre_num_partition = pcluster->num_partition;
-#else
-	int pre_valid = pcluster->inactive_valid;
-	int pre_num_partition = pcluster->inactive_partition;
-#endif
-
 #endif
 	// Select the Stream
 	int stream = select_stream(LPN, IO_type);
@@ -129,7 +120,7 @@ void IOPM_write(int LPN, int IO_type) {
 	}
 
 	// 2. do we need to allocate a new partition?
-	if (psit->recentLPN == -1 || LPN <= psit->recentLPN 
+	if (new_block_flag || psit->recentLPN == -1 || LPN <= psit->recentLPN 
 		|| CLUSTER_FROM_LPN(LPN) != CLUSTER_FROM_LPN(psit->recentLPN)) {
 
 		// close previous partition if exist
@@ -142,6 +133,8 @@ void IOPM_write(int LPN, int IO_type) {
 
 		ppvb->block[ppvb->blocknum] = block;
 		ppvb->blocknum++;
+
+		assert(ppvb->blocknum == 1);
 
 		ppvb->startPPN = psit->recentPPN;
 
@@ -157,14 +150,6 @@ void IOPM_write(int LPN, int IO_type) {
 	else {
 		partition = psit->activePartition;
 		ppvb = &PVB[partition];
-
-		if (new_block_flag) {
-
-			ppvb->block[ppvb->blocknum] = block;
-			ppvb->blocknum++;
-
-			link_partition_to_BIT(partition, block);
-		}
 	}
 
 	// do write
@@ -178,9 +163,6 @@ void IOPM_write(int LPN, int IO_type) {
 	ppvb->valid++;
 
 	ppvb->endPPN = psit->recentPPN; //temporal endPPN, will be changed if the partition is not closed 
-
-	// Set CLUSTER
-	pcluster->valid++;
 
 	// invalid old data
 	if (overwrite_PPN != -1) {
@@ -213,30 +195,20 @@ void IOPM_write(int LPN, int IO_type) {
 				do_count(prof_BGC_erase, 1);
 		}
 
-		// if this is overwrite, then we don't need to increase valid count
-		pcluster->valid--;
-
 		if (!ppvb->active_flag)
 			pcluster->inactive_valid--;
 	}
+	else
+		pcluster->valid++;
 
 	// test 
 	check_LPN_MAP(LPN, psit->recentPPN);
 	check_OOB_MAP(LPN, psit->recentPPN);
 
 #if SORTED_CLUSTER_LIST
-
-#if PGC_INCLUDE_ACTIVE_AS_VICTIM
 	// if mean valid pages of cluster are changed, then re-sort the victim list
-	if(pre_num_partition && ((pre_valid / pre_num_partition) != (pcluster->valid / pcluster->num_partition)))
+	if(pre_num_partition != pcluster->num_partition)
 		insert_cluster_to_victim_list(cluster);
-
-#else
-	if(!pcluster->inactive_partition)
-		list_del(&pcluster->c_list);
-	else if (pre_num_partition && ((pre_valid / pre_num_partition) != (pcluster->inactive_valid / pcluster->inactive_partition)))
-		insert_cluster_to_victim_list(cluster);
-#endif
 #endif
 
 	// do partition gc
@@ -244,7 +216,35 @@ void IOPM_write(int LPN, int IO_type) {
 
 }
 
-void BlockGC() {
+static void __do_gc(){
+
+	int gc_count = 0;
+
+	while(free_partition < PARTITION_LIMIT || free_block < BLOCK_LIMIT){
+		
+		int block = select_vicitim_block_for_unified_GC();
+
+		if(block != -1){
+			do_count(prof_UGC_cnt, 1);
+			BlockGC(block);
+		}
+		else if(free_partition < PARTITION_LIMIT)
+			PartitionGC();
+		else if(free_block < BLOCK_LIMIT)
+			BlockGC(-1);
+	}	
+}
+
+void do_gc_if_needed(int IOtype) {
+	
+	if (IOtype == IO) {
+		if(free_partition < PARTITION_LIMIT || free_block < BLOCK_LIMIT) {
+			__do_gc();
+		}
+	}
+}
+
+void BlockGC(int block) {
 	
 	/*******COUNTING******/
 	do_count(prof_BGC_cnt, 1);
@@ -253,7 +253,10 @@ void BlockGC() {
 	int victim_block = 0;
 	
 	/* Select victim block */
-	victim_block = select_victim_block();
+	if(block == -1)
+		victim_block = select_victim_block();
+	else 
+		victim_block = block;
 
 	_BIT *pbit = &BIT[victim_block];
 
@@ -300,40 +303,16 @@ void PartitionGC() {
 
 	int victim_cluster = select_victim_cluster();
 	int copied_page = 0;
-	int iter;
 	
 	_CLUSTER *pcluster = &CLUSTER[victim_cluster];
+	_PVB *ppvb = NULL;
 
 	// page information for new partition
 	int first_page = -1;
 
-	int victim_partition[MAX_NUM_PARTITION_PGC];
-
 	GC_temp_cnt = 0;
 
-	select_victim_partition(victim_cluster, victim_partition);
-
-	if (victim_partition[1] == -1) { // might cuz of active partition 
-		printf("ERROR:: there are not enough partitions to GC\n");
-		getchar();
-	}
-
-	for (iter = 0; iter < MAX_NUM_PARTITION_PGC; iter++) {
-
-		int partition = victim_partition[iter];
-		_PVB *ppvb = &PVB[partition];
-
-		if (iter >= 2 && (copied_page + ppvb->valid) > PGC_COPY_THRESHOLD)
-			break;
-
-		if (partition == -1)
-			break;
-
-		// actually, if we target the active partition, we need to close the partition first
-		if (ppvb->active_flag) {
-			printf("handle this issue first\n");
-			getchar();
-		}
+	list_for_each_entry(_PVB, ppvb, &pcluster->p_list, p_list) {
 
 		do_count(prof_PGC_victim, 1);
 

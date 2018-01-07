@@ -768,6 +768,10 @@ static int* return_cnt_ptr(int flag) {
 	case prof_BGC_cnt:
 		pcnt = &stat.bgc.bgc_cnt;
 		break;
+		
+	case prof_UGC_cnt:
+		pcnt = &stat.bgc.ugc_cnt;
+		break;
 
 	case prof_BGC_write:
 		pcnt = &stat.bgc.nand.write;

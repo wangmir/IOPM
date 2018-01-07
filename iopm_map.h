@@ -6,7 +6,6 @@
 #define PVB_BLOCK_RECLAIMED (-2)
 
 int select_stream(int LPN, int IO_type);
-void do_gc_if_needed(int flag);
 void remove_partition_from_cluster(int partition, int IO_type);
 
 void free_full_invalid_partition(int partition);
@@ -39,6 +38,8 @@ void put_block(int victim_block, int flag);
 void unlink_block_from_PVB(int victim_block);
 
 void insert_cluster_to_victim_list(int cluster);
+
+int select_vicitim_block_for_unified_GC();
 int select_victim_block();
 int select_victim_cluster();
 void select_victim_partition(int cluster, int *p_array);

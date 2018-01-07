@@ -16,7 +16,9 @@
 
 #define CLUSTER_FROM_LPN(LPN) ((LPN) / PAGE_PER_CLUSTER)
 
-#define MAX_NUM_PARTITION_PGC 8
+#define MAX_NUM_PARTITION_PGC 128
+
+#define MAX_NUM_COPY_FOR_UNIFIED_GC 32
 
 #define PGC_COPY_THRESHOLD 0	// do PGC more, if currently we did few copies.
 
@@ -91,13 +93,15 @@ typedef struct _BIT {
 
 	int block_num;
 	int free_flag;
+	int hybrid_flag;		//if 1, this physical block has partitions more than 1 
+	
 	struct list_head b_list;
 	struct list_head linked_partition;
 }_BIT;
 
 _BIT *BIT;
 
-struct list_head allocated_block_pool;
+struct list_head allocated_block_pool;		// if the block is not hybrid block, then the block will be in the top of the list
 struct list_head free_block_pool;
 
 typedef struct _LIST_MAP {
@@ -125,14 +129,13 @@ int * GC_temp_LPN;
 int * GC_temp_PPN;
 int GC_temp_cnt;
 
-int * victim_partition;
-
 // function
 void read(int start_LPN, int count);
 int IOPM_read(int LPN, int flag);
 void write(int start_LPN, int count);
 void IOPM_write(int LPN, int flag);
-void BlockGC();
+void do_gc_if_needed(int flag);
+void BlockGC(int block);
 void PartitionGC();
 
 #endif
