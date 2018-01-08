@@ -259,7 +259,11 @@ int trace_parsing_msr(FILE *fp, int *start_LPN, int *count) {
 	hostname = strtok(NULL, ",");
 	if (hostname == NULL)
 		return 2;
-	disknum = atoi(strtok(NULL, ","));
+
+	char *temp = strtok(NULL, ",");
+	if (!temp)
+		return 2;
+	disknum = atoi(temp);
 	//type = strtok_s(NULL, ",", &tok);
 	type = strtok(NULL, ",");
 	if (type == NULL)
