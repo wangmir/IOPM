@@ -124,6 +124,8 @@ void free_full_invalid_partition(int partition) {
 	remove_partition_from_cluster(partition, IO);	
 }
 
+// hybrid_block_for_UGC
+// in this version of StreamFTL, partition list in the BIT must be sorted according to its partition number
 void link_partition_to_BIT(int partition, int block) {
 
 	_BIT *pbit = &BIT[block];
@@ -135,22 +137,28 @@ void link_partition_to_BIT(int partition, int block) {
 	}
 
 	_LIST_MAP *r_map = list_first_entry(&free_r_plist, _LIST_MAP, list);
+	_LIST_MAP *plist = NULL;
 
 	list_del(&r_map->list);
-	list_add(&r_map->list, &pbit->linked_partition);
-
-	num_allocated_r_plist++;
 
 	r_map->value = partition;
 
+	num_allocated_r_plist++;
 	pbit->num_partition++;
-	
-	if(pbit->num_partition > 1){
-		pbit->hybrid_flag = 1;
+
+	if(list_empty(&pbit->linked_partition)){
+		list_add(&r_map->list, &pbit->linked_partition);
+	}
+	else{
+		list_for_each_entry(_LIST_MAP, plist, &pbit->linked_partition, list) {
+			
+			if (r_map->value <= plist->value) {
+				list_add_tail(&r_map->list, &plist->list);
+				return;
+			}
+		}
+		list_add_tail(&r_map->list, &pbit->linked_partition);
 		
-		// add to the tail of allocated_block_pool cuz it is hybrid block
-		list_del(&pbit->b_list);
-		list_add_tail(&pbit->b_list, &allocated_block_pool);
 	}
 }
 
@@ -180,14 +188,6 @@ void unlink_partition_from_BIT(int partition) {
 		}
 
 		pbit->num_partition--;
-		
-		if(pbit->num_partition == 1){
-			pbit->hybrid_flag = 0;
-
-			// move to top of allocated_block_pool
-			list_del(&pbit->b_list);
-			list_add(&pbit->b_list, &allocated_block_pool);
-		}
 	}
 }
 
@@ -258,6 +258,28 @@ int get_offset_fast(unsigned int *a, int n, int IO_type) {
 	return count;
 }
 
+void sort_block(int block_num){
+
+	_BIT *pbit = &BIT[block_num];
+	_BIT *ppbit = NULL;
+
+	list_del(&pbit->b_list);
+
+	if(list_empty(&allocated_block_pool)){
+		list_add(&pbit->b_list, &allocated_block_pool);
+	}
+	else{
+		list_for_each_entry(_BIT, ppbit, &allocated_block_pool, b_list){
+			
+			if (pbit->invalid >= ppbit->invalid) {
+					list_add_tail(&pbit->b_list, &ppbit->b_list);
+					return;
+			}
+		}
+		list_add_tail(&pbit->b_list, &allocated_block_pool);
+	}	
+}
+
 int allocate_block() {
 
 	assert(!list_empty(&free_block_pool));
@@ -270,7 +292,7 @@ int allocate_block() {
 	pbit->free_flag = 0;
 
 	list_del(&pbit->b_list);
-	list_add(&pbit->b_list, &allocated_block_pool);
+	list_add_tail(&pbit->b_list, &allocated_block_pool);
 
 	free_block--;
 	return pbit->block_num;
@@ -536,27 +558,66 @@ void insert_cluster_to_victim_list(int cluster) {
 	}
 }
 
+// count maximum number of duplicated partition from sorted partition list in block
+static int get_maximum_partition_of_block(int block_num){
+
+	_BIT *pbit = &BIT[block_num];
+	_LIST_MAP *plist = NULL;
+	int pos = 0;
+	int partition[2];
+	int num_partition[2];
+	int max_partition = -1;
+	int max_num_partition = 0;
+
+	partition[0] = -1;
+	partition[1] = -1;
+
+	list_for_each_entry(_LIST_MAP, plist, &pbit->linked_partition, list){
+
+		if(plist->value != partition[pos]){
+			pos = (pos + 1) % 2;
+
+			partition[pos] = plist->value;
+			num_partition[pos] = 1;
+		}
+		else{
+			num_partition[pos]++;
+		}
+
+		if(max_num_partition < num_partition[pos]){
+			max_num_partition = num_partition[pos];
+			max_partition = partition[pos];
+		}
+	}
+
+	// it should be larger than 0
+	assert(max_num_partition);
+
+	return max_num_partition;
+}
+
 int select_vicitim_block_for_unified_GC(){
 
 	_BIT *pbit = NULL;
 
-	int victim_block = -1, max_invalid = 0;
-	int non_hybrid = 0;
+	int victim_block = -1, max_num_partition = 1;
 
 	list_for_each_entry(_BIT, pbit, &allocated_block_pool, b_list) {
+
+		int block = -1, num_partition = 0;
 		
 		if (pbit->is_active)
 			continue;
 
-		// non_hybrid block is in the allocated block pool
-		if(pbit->hybrid_flag == 0)
-			non_hybrid = 1;
-
-		if(pbit->hybrid_flag == 1)
+		// window size
+		if(pbit->invalid < (PAGE_PER_BLOCK - MAX_NUM_COPY_FOR_UNIFIED_GC))
 			break;
 
-		if (pbit->invalid > max_invalid && pbit->num_partition > 1) {
-			max_invalid = pbit->invalid;
+		block = pbit->block_num;
+		num_partition = get_maximum_partition_of_block(block);
+
+		if (num_partition > max_num_partition) {
+			max_num_partition = num_partition;
 			victim_block = pbit->block_num;
 		}
 	}

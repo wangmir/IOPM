@@ -194,6 +194,8 @@ void IOPM_write(int LPN, int IO_type) {
 			else if (IO_type == BGC)
 				do_count(prof_BGC_erase, 1);
 		}
+		else
+			sort_block(pbit->block_num);
 
 		if (!ppvb->active_flag)
 			pcluster->inactive_valid--;

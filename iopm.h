@@ -18,7 +18,7 @@
 
 #define MAX_NUM_PARTITION_PGC 128
 
-#define MAX_NUM_COPY_FOR_UNIFIED_GC 32
+int MAX_NUM_COPY_FOR_UNIFIED_GC;
 
 #define PGC_COPY_THRESHOLD 0	// do PGC more, if currently we did few copies.
 

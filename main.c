@@ -394,6 +394,8 @@ void command_setting(int argc, char *argv[]) {
 	// stream
 	NUMBER_STREAM = 32;
 
+	MAX_NUM_COPY_FOR_UNIFIED_GC = 32;
+
 	// cluster
 	//CLUSTER_SIZE = 2 * MB;
 	
@@ -431,6 +433,12 @@ void command_setting(int argc, char *argv[]) {
 			i++;
 			AGINGFILE = argv[i];
 		}
+
+		if (strcmp(argv[i], "-ugc") == 0) {
+			i++;
+			MAX_NUM_COPY_FOR_UNIFIED_GC = atoi(argv[i]);
+		}
+
 		if (strcmp(argv[i], "-init") == 0) {
 			i++;
 			DO_INIT_FLAG = atoi(argv[i]);
