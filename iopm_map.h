@@ -10,7 +10,7 @@ void remove_partition_from_cluster(int partition, int IO_type);
 
 void free_full_invalid_partition(int partition);
 
-void link_partition_to_BIT(int partition, int block);
+void link_partition_to_BIT(int cluster, int partition, int block);
 void unlink_partition_from_BIT(int partition);
 
 int find_bitmap(int partition, int offset, int read);

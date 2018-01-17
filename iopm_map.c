@@ -126,7 +126,7 @@ void free_full_invalid_partition(int partition) {
 
 // hybrid_block_for_UGC
 // in this version of StreamFTL, partition list in the BIT must be sorted according to its partition number
-void link_partition_to_BIT(int partition, int block) {
+void link_partition_to_BIT(int cluster, int partition, int block) {
 
 	_BIT *pbit = &BIT[block];
 
@@ -142,6 +142,7 @@ void link_partition_to_BIT(int partition, int block) {
 	list_del(&r_map->list);
 
 	r_map->value = partition;
+	r_map->cluster = cluster;
 
 	num_allocated_r_plist++;
 	pbit->num_partition++;
@@ -152,7 +153,7 @@ void link_partition_to_BIT(int partition, int block) {
 	else{
 		list_for_each_entry(_LIST_MAP, plist, &pbit->linked_partition, list) {
 			
-			if (r_map->value <= plist->value) {
+			if (r_map->cluster <= plist->cluster) {
 				list_add_tail(&r_map->list, &plist->list);
 				return;
 			}
@@ -564,20 +565,20 @@ static int get_maximum_partition_of_block(int block_num){
 	_BIT *pbit = &BIT[block_num];
 	_LIST_MAP *plist = NULL;
 	int pos = 0;
-	int partition[2];
+	int cluster[2];
 	int num_partition[2];
 	int max_partition = -1;
 	int max_num_partition = 0;
 
-	partition[0] = -1;
-	partition[1] = -1;
+	cluster[0] = -1;
+	cluster[1] = -1;
 
 	list_for_each_entry(_LIST_MAP, plist, &pbit->linked_partition, list){
 
-		if(plist->value != partition[pos]){
+		if(plist->cluster != cluster[pos]){
 			pos = (pos + 1) % 2;
 
-			partition[pos] = plist->value;
+			cluster[pos] = plist->cluster;
 			num_partition[pos] = 1;
 		}
 		else{
@@ -586,7 +587,7 @@ static int get_maximum_partition_of_block(int block_num){
 
 		if(max_num_partition < num_partition[pos]){
 			max_num_partition = num_partition[pos];
-			max_partition = partition[pos];
+			max_partition = cluster[pos];
 		}
 	}
 
@@ -612,6 +613,9 @@ int select_vicitim_block_for_unified_GC(){
 		// window size
 		if(pbit->invalid < (PAGE_PER_BLOCK - MAX_NUM_COPY_FOR_UNIFIED_GC))
 			break;
+
+		if (pbit->num_partition == 1)
+			continue;
 
 		block = pbit->block_num;
 		num_partition = get_maximum_partition_of_block(block);

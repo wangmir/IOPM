@@ -106,6 +106,7 @@ struct list_head free_block_pool;
 
 typedef struct _LIST_MAP {
 	int value;
+	int cluster;
 	struct list_head list;
 }_LIST_MAP;
 

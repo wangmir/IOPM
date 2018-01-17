@@ -635,6 +635,7 @@ void print_count(char * file, int trace_total_write) {
 		fprintf(fp, "BGC_READ, ");
 		fprintf(fp, "BGC_ERASE, ");
 		fprintf(fp, "BGC_CNT, ");
+		fprintf(fp, "UGC_CNT, ");
 
 		fprintf(fp, "PGC_WRITE, ");
 		fprintf(fp, "PGC_READ, ");
@@ -698,6 +699,7 @@ void print_count(char * file, int trace_total_write) {
 	fprintf(fp, "%d, ", get_count(prof_BGC_read));
 	fprintf(fp, "%d, ", get_count(prof_BGC_erase));
 	fprintf(fp, "%d, ", get_count(prof_BGC_cnt));
+	fprintf(fp, "%d, ", get_count(prof_UGC_cnt));
 
 	fprintf(fp, "%d, ", get_count(prof_PGC_write));
 	fprintf(fp, "%d, ", get_count(prof_PGC_read));

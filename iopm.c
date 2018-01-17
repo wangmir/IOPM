@@ -145,7 +145,7 @@ void IOPM_write(int LPN, int IO_type) {
 
 		psit->activePartition = partition;
 
-		link_partition_to_BIT(partition, block);
+		link_partition_to_BIT(cluster, partition, block);
 	}
 	else {
 		partition = psit->activePartition;
