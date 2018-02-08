@@ -70,12 +70,14 @@ void IOPM_write(int LPN, int IO_type) {
 	int overwrite_partition = -1;
 	int overwrite_PPN = -1;
 
+	//partition -> stream
 	int partition = -1;
 	_PVB *ppvb = NULL;
 
 	int block = -1;
 	_BIT *pbit = NULL;
 
+	// custer --> partition
 	int cluster = CLUSTER_FROM_LPN(LPN);
 	_CLUSTER *pcluster = &CLUSTER[cluster];
 
@@ -164,7 +166,7 @@ void IOPM_write(int LPN, int IO_type) {
 
 	ppvb->endPPN = psit->recentPPN; //temporal endPPN, will be changed if the partition is not closed 
 
-	// invalid old data
+	// 3. if LPN has old data: invalid old data
 	if (overwrite_PPN != -1) {
 
 		if(IO_type == IO)
