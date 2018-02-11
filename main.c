@@ -421,11 +421,19 @@ void command_setting(int argc, char *argv[]) {
 	MSR = 1;
 	CUTTER = 0;
 	AGINGFILE = NULL;
+
+	MAX_NUM_COPY_PGC = 32;
 	//test_setting();
 
 	DO_INIT_FLAG = 1;
 
 	for (i = 0; i<argc; i++) {
+
+		
+		if (strcmp(argv[i], "-pgccopy") == 0) {
+			i++;
+			MAX_NUM_COPY_PGC = atoi(argv[i]);
+		}
 
 		if (strcmp(argv[i], "-aging") == 0) {
 			i++;

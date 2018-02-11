@@ -311,8 +311,21 @@ void PartitionGC() {
 	int first_page = -1;
 
 	GC_temp_cnt = 0;
+	PGC_plist_cnt = 0;
 
 	list_for_each_entry(_PVB, ppvb, &pcluster->p_list, p_list) {
+		PGC_plist[PGC_plist_cnt] = ppvb->partition_num;
+		PGC_plist_cnt++;
+	}
+
+	qsort(PGC_plist, PGC_plist_cnt, sizeof(int), compare);
+
+	for (int i = 0; i < PGC_plist_cnt; i++) {
+
+		ppvb = &PVB[PGC_plist[i]];
+
+		if ((GC_temp_cnt + ppvb->valid > MAX_NUM_COPY_PGC) && (i > MIN_NUM_PARTITION_PGC))
+			break;
 
 		do_count(prof_PGC_victim, 1);
 
@@ -335,7 +348,7 @@ void PartitionGC() {
 			for (int j = start_offset; j <= end_offset; j++) {
 
 				if (NAND_is_valid(block, j)) {
-					
+
 					do_count(prof_PGC_read, 1);
 
 					GC_temp_LPN[GC_temp_cnt] = NAND_read(block, j);

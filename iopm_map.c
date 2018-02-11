@@ -636,37 +636,3 @@ int select_victim_cluster() {
 
 #endif
 }
-
-void select_victim_partition(int cluster, int *p_array) {
-
-	_CLUSTER *pcluster = &CLUSTER[cluster];
-	_PVB *ppvb = NULL;
-	int valid_array[MAX_NUM_PARTITION_PGC];
-
-	for (int i = 0; i < MAX_NUM_PARTITION_PGC; i++)
-		p_array[i] = -1;
-
-	// pick <MAX_NUM_PARTITION_PGC> partitions, which have minimum number of valid pages, from victim cluster
-	list_for_each_entry(_PVB, ppvb, &pcluster->p_list, p_list) {
-
-		for (int i = 0; i < MAX_NUM_PARTITION_PGC; i++) {
-
-			if (p_array[i] == -1) {
-				p_array[i] = ppvb->partition_num;
-				valid_array[i] = ppvb->valid;
-				break;
-			}
-
-			if (valid_array[i] >= ppvb->valid) {
-
-				for (int j = MAX_NUM_PARTITION_PGC - 2; j >= i; j--) {
-					p_array[j + 1] = p_array[j];
-					valid_array[j + 1] = valid_array[j];
-				}
-				p_array[i] = ppvb->partition_num;
-				valid_array[i] = ppvb->valid;
-				break;
-			}
-		}
-	}
-}

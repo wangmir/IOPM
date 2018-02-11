@@ -16,9 +16,10 @@
 
 #define CLUSTER_FROM_LPN(LPN) ((LPN) / PAGE_PER_CLUSTER)
 
-#define MAX_NUM_PARTITION_PGC 128
+int MAX_NUM_COPY_PGC;
+#define MIN_NUM_PARTITION_PGC 2
 
-#define MAX_NUM_COPY_FOR_UNIFIED_GC 32
+#define MAX_NUM_COPY_FOR_UNIFIED_GC 64
 
 #define PGC_COPY_THRESHOLD 0	// do PGC more, if currently we did few copies.
 
@@ -128,6 +129,9 @@ int * remove_block_in_partition;
 int * GC_temp_LPN;
 int * GC_temp_PPN;
 int GC_temp_cnt;
+
+int *PGC_plist; // for quick sorted array
+int PGC_plist_cnt;
 
 // function
 void read(int start_LPN, int count);

@@ -5,6 +5,16 @@
 
 #define PVB_BLOCK_RECLAIMED (-2)
 
+inline int compare(void *f, void *s) {
+
+	if (*(int*)f < *(int*)s)
+		return 1;
+	else if (*(int*)f > *(int*)s)
+		return -1;
+	else
+		return 0;
+}
+
 int select_stream(int LPN, int IO_type);
 void remove_partition_from_cluster(int partition, int IO_type);
 
@@ -42,6 +52,5 @@ void insert_cluster_to_victim_list(int cluster);
 int select_vicitim_block_for_unified_GC();
 int select_victim_block();
 int select_victim_cluster();
-void select_victim_partition(int cluster, int *p_array);
 
 #endif

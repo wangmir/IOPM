@@ -18,6 +18,8 @@ void init() {
 	GC_temp_LPN = (int *)malloc(sizeof(int)*(PARTITION_PER_CLUSTER + 2)*(PAGE_PER_PARTITION));
 	GC_temp_PPN = (int *)malloc(sizeof(int)*(PARTITION_PER_CLUSTER + 2)*(PAGE_PER_PARTITION));
 
+	PGC_plist = (int *)malloc(sizeof(int) * PAGE_PER_BLOCK);
+
 	remove_block_in_partition = (int *)malloc(sizeof(int) * BLOCK_PER_PARTITION);
 }
 
